@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LEB Kharadar Register</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #F3F4F1; color: #1B1F1D; }
+  input, select, textarea, button { font-family: inherit; }
+  .card { background: #fff; border: 1px solid #E4E7E4; border-radius: 12px; padding: 16px; }
+  .inp { width: 100%; border: 1px solid #D8DDD9; border-radius: 8px; padding: 8px 12px; font-size: 14px; background: #fff; }
+  .inp:focus { outline: 2px solid #1E9E6A55; }
+  .lbl { display: block; font-size: 11px; font-weight: 600; color: #5A6560; letter-spacing: .04em; margin-bottom: 4px; }
+  .fld { margin-bottom: 12px; }
+  .btn { border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; background: #0E3B2E; color: #fff; }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.ghost { background: transparent; color: #0E3B2E; border: 1.5px solid #0E3B2E; }
+  .btn.soft { background: #E3F2E9; color: #0E3B2E; }
+  .btn.danger { background: transparent; color: #A33222; border: 1px solid #E5C2BC; }
+  .btn.sm { padding: 5px 12px; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .mono { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #F8F9F7; border: 1px dashed #C9D2CC; border-radius: 8px; padding: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .muted { color: #5A6560; font-size: 12px; }
+  .faint { color: #8A938E; font-size: 12px; }
+  .tabbtn { padding: 6px 12px; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .subtab { padding: 6px 12px; border: none; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .empty { text-align: center; padding: 40px 10px; color: #8A938E; font-size: 13px; }
+  .paychip { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
+  .paychip.on { background: #1E9E6A; color: #fff; }
+  .paychip.off { background: #EEF0EE; color: #5A6560; border: 1px dashed #B9C2BC; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useMemo } = React;
+
+/* ---------- storage adapter: Claude shared storage OR this device (downloaded app) ---------- */
+const STORAGE_KEY = "leb-kharadar-data";
+const store = {
+  async get() {
+    if (window.storage) {
+      try { const r = await window.storage.get(STORAGE_KEY, true); return r ? r.value : null; } catch (e) { return null; }
+    }
+    try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+  },
+  async set(value) {
+    if (window.storage) {
+      try { await window.storage.set(STORAGE_KEY, value, true); return true; } catch (e) { return false; }
+    }
+    try { localStorage.setItem(STORAGE_KEY, value); return true; } catch (e) { return false; }
+  },
+};
+
+const PROGRAM_STATUSES = ["Idea", "PRF Drafted", "Submitted to Council", "Approved", "Launched", "Completed"];
+const STATUS_COLORS = {
+  "Idea": { bg: "#EEF0EE", fg: "#5A6560" },
+  "PRF Drafted": { bg: "#FBF3DF", fg: "#8A6A14" },
+  "Submitted to Council": { bg: "#FDEBD8", fg: "#9A5A16" },
+  "Approved": { bg: "#E3F2E9", fg: "#166B45" },
+  "Launched": { bg: "#DDF0FB", fg: "#155E82" },
+  "Completed": { bg: "#E8E6F5", fg: "#4B4390" },
+};
+const FEE_TYPES = [
+  { key: "tuition", label: "Tuition Fees" },
+  { key: "pps", label: "PPS Afghan Students" },
+  { key: "uni", label: "University & Other" },
+];
+const FEE_TYPE_NAMES = { tuition: "Tuition Fees", pps: "Pak Progressive School — Afghan Student Fees", uni: "University & Other" };
+
+const emptyData = {
+  adminPin: null,
+  programs: [],
+  students: [],
+  staff: [],
+  prfs: [],
+  groups: [{ id: "g1", name: "LEB Core Team" }, { id: "g2", name: "Teachers Group" }],
+  announcements: [],
+};
+
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+const thisMonth = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
+const monthLabel = (ym) => {
+  if (!ym) return "";
+  const parts = ym.split("-");
+  const names = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return names[parseInt(parts[1], 10) - 1] + " " + parts[0];
+};
+const fmtMoney = (n) => "Rs " + (Number(n) || 0).toLocaleString("en-PK");
+
+/* how much LEB pays for a student per month */
+const lebCost = (s) => Number(s.type === "tuition" ? s.lebAmount : s.amount) || 0;
+
+/* ---------- small components ---------- */
+function Badge({ text, colors }) {
+  return <span className="badge" style={{ background: colors.bg, color: colors.fg }}>{text}</span>;
+}
+function Field({ label, children }) {
+  return <label className="fld"><span className="lbl">{label}</span>{children}</label>;
+}
+function CopyBtn({ text, label }) {
+  const [done, setDone] = useState(false);
+  const copy = () => {
+    const finish = () => { setDone(true); setTimeout(() => setDone(false), 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(finish).catch(() => { fallback(); finish(); });
+    } else { fallback(); finish(); }
+    function fallback() {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
+    }
+  };
+  return <button className="btn soft sm" onClick={copy}>{done ? "Copied ✓" : (label || "Copy")}</button>;
+}
+function Empty({ text }) { return <div className="empty">{text}</div>; }
+
+/* ---------- App ---------- */
+function App() {
+  const [data, setData] = useState(null);
+  const [tab, setTab] = useState("dashboard");
+  const [saveState, setSaveState] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const raw = await store.get();
+      let parsed = emptyData;
+      if (raw) { try { parsed = { ...emptyData, ...JSON.parse(raw) }; } catch (e) {} }
+      setData(parsed);
+    })();
+  }, []);
+
+  const update = (fn) => {
+    setData((prev) => {
+      const next = fn(JSON.parse(JSON.stringify(prev)));
+      (async () => {
+        setSaveState("saving");
+        const ok = await store.set(JSON.stringify(next));
+        setSaveState(ok ? "saved" : "error");
+        if (ok) setTimeout(() => setSaveState(""), 1200);
+      })();
+      return next;
+    });
+  };
+
+  const refresh = async () => {
+    const raw = await store.get();
+    if (raw) { try { setData({ ...emptyData, ...JSON.parse(raw) }); } catch (e) {} }
+  };
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "leb-kharadar-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const importData = (file) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const incoming = JSON.parse(reader.result);
+        if (!incoming.programs && !incoming.students) { alert("This file doesn't look like a LEB backup."); return; }
+        if (confirm("Replace the current data with this backup file?")) {
+          update(() => ({ ...emptyData, ...incoming }));
+        }
+      } catch (e) { alert("Could not read this file. Make sure it's the exported .json backup."); }
+    };
+    reader.readAsText(file);
+  };
+
+  if (!data) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><div className="muted">Opening the register…</div></div>;
+
+  /* first run: create admin PIN */
+  if (!data.adminPin) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0E3B2E", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 380 }}>
+          <div style={{ fontSize: 11, letterSpacing: ".2em", fontWeight: 600, color: "#1E9E6A", marginBottom: 4 }}>FIRST-TIME SETUP</div>
+          <h1 style={{ fontSize: 20, color: "#0E3B2E", marginBottom: 4 }}>Create the admin PIN</h1>
+          <p className="muted" style={{ marginBottom: 16 }}>The admin PIN unlocks editing, all fees and salaries, PRFs, and reports. Everyone else gets a read-only view with no money figures.</p>
+          <Field label="ADMIN PIN (4–8 DIGITS)">
+            <input type="password" inputMode="numeric" className="inp" value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 8))} />
+          </Field>
+          <Field label="CONFIRM PIN">
+            <input type="password" inputMode="numeric" className="inp" value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 8))} />
+          </Field>
+          {pin1 && pin2 && pin1 !== pin2 && <div style={{ color: "#A33222", fontSize: 12, marginBottom: 8 }}>PINs don't match yet.</div>}
+          <button className="btn" disabled={pin1.length < 4 || pin1 !== pin2}
+            onClick={() => { update((d) => { d.adminPin = pin1; return d; }); setIsAdmin(true); setPin1(""); setPin2(""); }}>
+            Set PIN & open as admin
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const allTabs = [
+    ["dashboard", "Dashboard", false],
+    ["programs", "Programs", false],
+    ["prf", "PRF", true],
+    ["fees", "Tuition Support", true],
+    ["staff", "Staff", true],
+    ["reports", "Reports", true],
+    ["whatsapp", "WhatsApp", true],
+  ];
+  const tabs = allTabs.filter((t) => isAdmin || !t[2]);
+
+  const tryLogin = () => {
+    if (pinInput === data.adminPin) { setIsAdmin(true); setShowLogin(false); setPinInput(""); setLoginError(""); }
+    else setLoginError("Incorrect PIN.");
+  };
+
+  return (
+    <div style={{ minHeight: "100vh" }}>
+      <div style={{ background: "#0E3B2E", padding: "20px 16px 12px" }}>
+        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          <div className="row between">
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".2em", fontWeight: 600, color: "#7FC8A4" }}>LOCAL EDUCATION BOARD</div>
+              <h1 style={{ fontSize: 24, color: "#fff", letterSpacing: "-0.01em" }}>Kharadar Register</h1>
+            </div>
+            <div className="row">
+              <div style={{ fontSize: 11, color: "#9DBBAE" }}>
+                {saveState === "saving" && "Saving…"}
+                {saveState === "saved" && "Saved ✓"}
+                {saveState === "error" && "Save failed"}
+              </div>
+              <button className="btn sm" style={{ background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.3)" }} onClick={refresh}>⟳</button>
+              {isAdmin ? (
+                <div className="row">
+                  <span className="badge" style={{ background: "#1E9E6A", color: "#fff" }}>ADMIN</span>
+                  <button onClick={() => { setIsAdmin(false); setTab("dashboard"); }} style={{ background: "none", border: "none", color: "#C6D8CE", fontSize: 12, fontWeight: 600, textDecoration: "underline", cursor: "pointer" }}>Log out</button>
+                </div>
+              ) : (
+                <button className="btn sm" style={{ background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.3)" }}
+                  onClick={() => { setShowLogin(!showLogin); setLoginError(""); setPinInput(""); }}>🔒 Admin login</button>
+              )}
+            </div>
+          </div>
+          {showLogin && !isAdmin && (
+            <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, padding: 12, maxWidth: 400 }} className="row">
+              <input type="password" inputMode="numeric" autoFocus placeholder="Enter admin PIN" className="inp" style={{ flex: 1, width: "auto" }}
+                value={pinInput}
+                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8)); setLoginError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && tryLogin()} />
+              <button className="btn" onClick={tryLogin}>Unlock</button>
+              {loginError && <span style={{ color: "#A33222", fontSize: 12, fontWeight: 600 }}>{loginError}</span>}
+            </div>
+          )}
+          <div className="row" style={{ marginTop: 16, gap: 4, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 2 }}>
+            {tabs.map((t) => (
+              <button key={t[0]} className="tabbtn" onClick={() => setTab(t[0])}
+                style={tab === t[0] ? { background: "#F3F4F1", color: "#0E3B2E" } : { background: "rgba(255,255,255,.08)", color: "#C6D8CE" }}>
+                {t[1]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px 60px" }}>
+        {tab === "dashboard" && <Dashboard data={data} go={setTab} isAdmin={isAdmin} exportData={exportData} importData={importData} />}
+        {tab === "programs" && <Programs data={data} update={update} isAdmin={isAdmin} />}
+        {isAdmin && tab === "prf" && <PRF data={data} update={update} />}
+        {isAdmin && tab === "fees" && <Fees data={data} update={update} />}
+        {isAdmin && tab === "staff" && <Staff data={data} update={update} />}
+        {isAdmin && tab === "reports" && <Reports data={data} />}
+        {isAdmin && tab === "whatsapp" && <WhatsApp data={data} update={update} />}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Dashboard (no money figures anywhere) ---------- */
+function Dashboard({ data, go, isAdmin, exportData, importData }) {
+  const m = thisMonth();
+  const activePrograms = data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).length;
+  const pipeline = data.programs.filter((p) => ["Idea", "PRF Drafted", "Submitted to Council"].includes(p.status)).length;
+  const activeStudents = data.students.filter((s) => s.status === "Active");
+  const paidStudents = activeStudents.filter((s) => s.payments && s.payments[m]).length;
+  const paidStaff = data.staff.filter((s) => s.payments && s.payments[m]).length;
+  const pendingPrfs = data.prfs.filter((p) => p.status !== "Approved" && p.status !== "Rejected").length;
+
+  const stats = [
+    ["Active programs", activePrograms, "programs"],
+    ["In pipeline", pipeline, "programs"],
+    ["Students supported", activeStudents.length, isAdmin ? "fees" : "programs"],
+  ];
+  if (isAdmin) stats.push(["PRFs awaiting Council", pendingPrfs, "prf"], ["Paid staff & teachers", data.staff.length, "staff"]);
+
+  return (
+    <div>
+      {!isAdmin && (
+        <div style={{ marginBottom: 12, background: "#E3F2E9", color: "#166B45", fontSize: 12, padding: "8px 12px", borderRadius: 8 }}>
+          Viewer mode — editing and fee details are available after admin login.
+        </div>
+      )}
+      <div className="grid3">
+        {stats.map((s) => (
+          <div key={s[0]} className="card" style={{ cursor: "pointer" }} onClick={() => go(s[2])}>
+            <div style={{ fontSize: 26, fontWeight: 700, color: "#0E3B2E" }}>{s[1]}</div>
+            <div className="muted" style={{ fontWeight: 600, marginTop: 2 }}>{s[0]}</div>
+          </div>
+        ))}
+      </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{monthLabel(m)} — this month's progress</div>
+          <Progress label="Student fees disbursed" done={paidStudents} total={activeStudents.length} />
+          <Progress label="Staff salaries paid" done={paidStaff} total={data.staff.length} />
+          <div className="faint">Counts only — amounts are in Tuition Support, Staff, and Reports.</div>
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Program pipeline</div>
+        {data.programs.length === 0 ? <Empty text="No programs yet." /> : (
+          data.programs.map((p) => (
+            <div key={p.id} className="row between" style={{ padding: "6px 0", borderBottom: "1px solid #EEF0EE" }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
+              <Badge text={p.status} colors={STATUS_COLORS[p.status]} />
+            </div>
+          ))
+        )}
+      </div>
+
+      {isAdmin && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Data backup</div>
+          <div className="row">
+            <button className="btn ghost sm" onClick={exportData}>⬇ Export data (.json)</button>
+            <label className="btn ghost sm" style={{ display: "inline-block" }}>
+              ⬆ Import data
+              <input type="file" accept=".json,application/json" style={{ display: "none" }}
+                onChange={(e) => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; }} />
+            </label>
+          </div>
+          <div className="faint" style={{ marginTop: 8 }}>
+            Export gives you a backup file you can keep or send on WhatsApp. On another device, use Import to load it.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Progress({ label, done, total }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="row between muted" style={{ marginBottom: 4 }}>
+        <span>{label}</span><span style={{ fontWeight: 600 }}>{done}/{total}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 999, background: "#E4E7E4" }}>
+        <div style={{ height: 8, borderRadius: 999, width: pct + "%", background: "#1E9E6A", transition: "width .3s" }}></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Programs ---------- */
+function Programs({ data, update, isAdmin }) {
+  const blank = { name: "", category: "", coordinator: "", budget: "", startDate: "", notes: "", status: "Idea" };
+  const [form, setForm] = useState(blank);
+  const [editId, setEditId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    update((d) => {
+      if (editId) d.programs = d.programs.map((p) => (p.id === editId ? { ...p, ...form } : p));
+      else d.programs.push({ ...form, id: uid() });
+      return d;
+    });
+    setForm(blank); setEditId(null); setShowForm(false);
+  };
+
+  return (
+    <div>
+      <div className="row between" style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18 }}>Programs & Activities</h2>
+        {isAdmin && <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add program"}</button>}
+      </div>
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="grid2">
+            <Field label="PROGRAM NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Board Exam Prep 2026" /></Field>
+            <Field label="CATEGORY"><input className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Education / Skills / Event" /></Field>
+            <Field label="COORDINATOR"><input className="inp" value={form.coordinator} onChange={(e) => setForm({ ...form, coordinator: e.target.value })} /></Field>
+            <Field label="ESTIMATED BUDGET (RS)"><input type="number" className="inp" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></Field>
+            <Field label="PLANNED START DATE"><input type="date" className="inp" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></Field>
+            <Field label="STATUS">
+              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                {PROGRAM_STATUSES.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="NOTES"><textarea rows="2" className="inp" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add program"}</button>
+        </div>
+      )}
+
+      {data.programs.length === 0 && !showForm ? <div className="card"><Empty text="No programs yet. Add the programs you run and the ones in the pipeline." /></div> : (
+        data.programs.map((p) => (
+          <div className="card" key={p.id} style={{ marginBottom: 12 }}>
+            <div className="row between">
+              <div>
+                <div style={{ fontWeight: 700 }}>{p.name}</div>
+                <div className="muted" style={{ marginTop: 2 }}>
+                  {[p.category, p.coordinator && "Coordinator: " + p.coordinator, isAdmin && p.budget && fmtMoney(p.budget), p.startDate && "Starts " + p.startDate].filter(Boolean).join(" · ")}
+                </div>
+                {p.notes && <div className="faint" style={{ marginTop: 4 }}>{p.notes}</div>}
+              </div>
+              {isAdmin ? (
+                <select value={p.status}
+                  onChange={(e) => update((d) => { d.programs = d.programs.map((x) => x.id === p.id ? { ...x, status: e.target.value } : x); return d; })}
+                  className="badge" style={{ background: STATUS_COLORS[p.status].bg, color: STATUS_COLORS[p.status].fg, border: "none", cursor: "pointer" }}>
+                  {PROGRAM_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              ) : <Badge text={p.status} colors={STATUS_COLORS[p.status]} />}
+            </div>
+            <div className="row" style={{ gap: 4, marginTop: 12, flexWrap: "nowrap" }}>
+              {PROGRAM_STATUSES.map((s, i) => (
+                <div key={s} title={s} style={{ height: 6, flex: 1, borderRadius: 999, background: PROGRAM_STATUSES.indexOf(p.status) >= i ? "#1E9E6A" : "#E4E7E4" }}></div>
+              ))}
+            </div>
+            {isAdmin && (
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn ghost sm" onClick={() => { setForm({ ...p }); setEditId(p.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>
+                <button className="btn danger sm" onClick={() => { if (confirm('Delete program "' + p.name + '"?')) update((d) => { d.programs = d.programs.filter((x) => x.id !== p.id); return d; }); }}>Delete</button>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* ---------- PRF ---------- */
+function PRF({ data, update }) {
+  const blank = { programName: "", purpose: "", details: "", venue: "", duration: "", participants: "", budgetBreakdown: "", resources: "", requestedBy: "", date: new Date().toISOString().slice(0, 10) };
+  const [form, setForm] = useState(blank);
+  const [preview, setPreview] = useState(null);
+
+  const buildText = (f) =>
+"LOCAL EDUCATION BOARD — KHARADAR\nPROGRAM REQUEST FORM (PRF)\nDate: " + f.date +
+"\n\n1. PROGRAM / ACTIVITY NAME\n" + f.programName +
+"\n\n2. PURPOSE & OBJECTIVES\n" + f.purpose +
+"\n\n3. DETAILS OF THE ACTIVITY\n" + f.details +
+"\n\n4. VENUE\n" + f.venue +
+"\n\n5. DURATION / SCHEDULE\n" + f.duration +
+"\n\n6. EXPECTED PARTICIPANTS\n" + f.participants +
+"\n\n7. BUDGET BREAKDOWN\n" + f.budgetBreakdown +
+"\n\n8. RESOURCES / SUPPORT REQUIRED\n" + f.resources +
+"\n\nRequested by: " + f.requestedBy +
+"\nSubmitted for the kind approval of the Council.";
+
+  const savePrf = () => {
+    if (!form.programName.trim()) return;
+    const text = buildText(form);
+    update((d) => { d.prfs.push({ id: uid(), ...form, text, status: "Draft" }); return d; });
+    setPreview(text); setForm(blank);
+  };
+
+  const prfStatuses = ["Draft", "Submitted to Council", "Approved", "Rejected"];
+  const prfColors = {
+    "Draft": { bg: "#EEF0EE", fg: "#5A6560" }, "Submitted to Council": { bg: "#FDEBD8", fg: "#9A5A16" },
+    "Approved": { bg: "#E3F2E9", fg: "#166B45" }, "Rejected": { bg: "#FBE3DF", fg: "#A33222" },
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", alignItems: "start" }}>
+      <div className="card">
+        <h2 style={{ fontSize: 16, marginBottom: 12 }}>New PRF for Council approval</h2>
+        <Field label="PROGRAM / ACTIVITY NAME">
+          <input className="inp" list="progNames" value={form.programName} onChange={(e) => setForm({ ...form, programName: e.target.value })} />
+          <datalist id="progNames">{data.programs.map((p) => <option key={p.id} value={p.name} />)}</datalist>
+        </Field>
+        <Field label="PURPOSE & OBJECTIVES"><textarea rows="2" className="inp" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} /></Field>
+        <Field label="DETAILS OF THE ACTIVITY"><textarea rows="3" className="inp" value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} /></Field>
+        <div className="grid2">
+          <Field label="VENUE"><input className="inp" value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></Field>
+          <Field label="DURATION / SCHEDULE"><input className="inp" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="e.g. 6 weeks, Mon–Fri 4–6pm" /></Field>
+          <Field label="EXPECTED PARTICIPANTS"><input className="inp" value={form.participants} onChange={(e) => setForm({ ...form, participants: e.target.value })} /></Field>
+          <Field label="REQUESTED BY"><input className="inp" value={form.requestedBy} onChange={(e) => setForm({ ...form, requestedBy: e.target.value })} /></Field>
+        </div>
+        <Field label="BUDGET BREAKDOWN"><textarea rows="3" className="inp" value={form.budgetBreakdown} onChange={(e) => setForm({ ...form, budgetBreakdown: e.target.value })} placeholder={"Teacher honorarium: Rs 15,000\nMaterials: Rs 5,000\nTotal: Rs 20,000"} /></Field>
+        <Field label="RESOURCES / SUPPORT REQUIRED"><textarea rows="2" className="inp" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} /></Field>
+        <button className="btn" onClick={savePrf}>Generate PRF</button>
+      </div>
+
+      {preview && (
+        <div className="card">
+          <div className="row between" style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Generated PRF — ready to submit</div>
+            <CopyBtn text={preview} />
+          </div>
+          <div className="mono">{preview}</div>
+        </div>
+      )}
+
+      <div className="card">
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>PRF tracker</div>
+        {data.prfs.length === 0 ? <Empty text="No PRFs yet. Fill the form to generate your first one." /> : (
+          data.prfs.map((p) => (
+            <div key={p.id} className="row between" style={{ padding: "6px 0", borderBottom: "1px solid #EEF0EE" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{p.programName}</div>
+                <div className="faint">{p.date}</div>
+              </div>
+              <div className="row">
+                <CopyBtn text={p.text} />
+                <select value={p.status}
+                  onChange={(e) => update((d) => { d.prfs = d.prfs.map((x) => x.id === p.id ? { ...x, status: e.target.value } : x); return d; })}
+                  className="badge" style={{ background: prfColors[p.status].bg, color: prfColors[p.status].fg, border: "none", cursor: "pointer" }}>
+                  {prfStatuses.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Tuition Support: 3 fee types + monthly WhatsApp data ---------- */
+function Fees({ data, update }) {
+  const [feeTab, setFeeTab] = useState("tuition");
+  const m = thisMonth();
+  const [msgMonth, setMsgMonth] = useState(m);
+  const blank = { name: "", type: "tuition", lebAmount: "", parentAmount: "", teacher: "", amount: "", statement: "", status: "Active" };
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+
+  const list = data.students.filter((s) => (s.type || "tuition") === feeTab);
+  const activeAll = data.students.filter((s) => s.status === "Active");
+  const monthlyTotal = activeAll.reduce((a, s) => a + lebCost(s), 0);
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    const rec = { ...form, type: feeTab };
+    update((d) => {
+      if (editId) d.students = d.students.map((s) => (s.id === editId ? { ...s, ...rec } : s));
+      else d.students.push({ ...rec, id: uid(), payments: {} });
+      return d;
+    });
+    setForm(blank); setEditId(null); setShowForm(false);
+  };
+
+  const togglePaid = (id) =>
+    update((d) => {
+      d.students = d.students.map((s) => {
+        if (s.id !== id) return s;
+        const payments = Object.assign({}, s.payments || {});
+        if (payments[m]) delete payments[m]; else payments[m] = true;
+        return { ...s, payments };
+      });
+      return d;
+    });
+
+  /* monthly WhatsApp fee data message */
+  const feeMessage = useMemo(() => {
+    const act = (type) => data.students.filter((s) => (s.type || "tuition") === type && s.status === "Active");
+    let t = "*LEB KHARADAR — MONTHLY FEE DATA*\n_" + monthLabel(msgMonth) + "_\n";
+    let grand = 0;
+
+    const tu = act("tuition");
+    t += "\n*1. TUITION FEES*\n";
+    if (tu.length === 0) t += "—\n";
+    tu.forEach((s, i) => {
+      t += (i + 1) + ". " + s.name + " — LEB: " + fmtMoney(s.lebAmount) + " | Parent: " + fmtMoney(s.parentAmount) + " | Teacher: " + (s.teacher || "-") + "\n";
+    });
+    const tuTotal = tu.reduce((a, s) => a + (Number(s.lebAmount) || 0), 0);
+    grand += tuTotal;
+    if (tu.length) t += "_LEB total: " + fmtMoney(tuTotal) + "_\n";
+
+    const pp = act("pps");
+    t += "\n*2. PAK PROGRESSIVE SCHOOL — AFGHAN STUDENT FEES*\n";
+    if (pp.length === 0) t += "—\n";
+    pp.forEach((s, i) => { t += (i + 1) + ". " + s.name + " — " + fmtMoney(s.amount) + "\n"; });
+    const ppTotal = pp.reduce((a, s) => a + (Number(s.amount) || 0), 0);
+    grand += ppTotal;
+    if (pp.length) t += "_Total: " + fmtMoney(ppTotal) + "_\n";
+
+    const un = act("uni");
+    t += "\n*3. UNIVERSITY & OTHER*\n";
+    if (un.length === 0) t += "—\n";
+    un.forEach((s, i) => { t += (i + 1) + ". " + s.name + " — " + fmtMoney(s.amount) + (s.statement ? " — " + s.statement : "") + "\n"; });
+    const unTotal = un.reduce((a, s) => a + (Number(s.amount) || 0), 0);
+    grand += unTotal;
+    if (un.length) t += "_Total: " + fmtMoney(unTotal) + "_\n";
+
+    t += "\n*GRAND TOTAL (LEB): " + fmtMoney(grand) + "*\n\nLocal Education Board — Kharadar";
+    return t;
+  }, [data.students, msgMonth]);
+
+  return (
+    <div>
+      <div className="row between" style={{ marginBottom: 4 }}>
+        <div>
+          <h2 style={{ fontSize: 18 }}>Tuition Fee Support</h2>
+          <div className="muted">{activeAll.length} active students · LEB pays {fmtMoney(monthlyTotal)}/month · Marking payments for {monthLabel(m)}</div>
+        </div>
+        <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add student"}</button>
+      </div>
+
+      <div className="row" style={{ margin: "12px 0" }}>
+        {FEE_TYPES.map((ft) => (
+          <button key={ft.key} className="subtab" onClick={() => { setFeeTab(ft.key); setShowForm(false); setEditId(null); }}
+            style={feeTab === ft.key ? { background: "#0E3B2E", color: "#fff" } : { background: "#E4E7E4", color: "#5A6560" }}>
+            {ft.label} ({data.students.filter((s) => (s.type || "tuition") === ft.key).length})
+          </button>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#0E3B2E" }}>{editId ? "Edit student" : "New student"} — {FEE_TYPE_NAMES[feeTab]}</div>
+          <div className="grid2">
+            <Field label="STUDENT NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            {feeTab === "tuition" && (<React.Fragment>
+              <Field label="TUITION TEACHER NAME"><input className="inp" value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} /></Field>
+              <Field label="LEB CONTRIBUTION (RS / MONTH)"><input type="number" className="inp" value={form.lebAmount} onChange={(e) => setForm({ ...form, lebAmount: e.target.value })} /></Field>
+              <Field label="PARENT CONTRIBUTION (RS / MONTH)"><input type="number" className="inp" value={form.parentAmount} onChange={(e) => setForm({ ...form, parentAmount: e.target.value })} /></Field>
+            </React.Fragment>)}
+            {feeTab === "pps" && (
+              <Field label="AMOUNT (RS / MONTH)"><input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+            )}
+            {feeTab === "uni" && (<React.Fragment>
+              <Field label="AMOUNT (RS / MONTH)"><input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+              <Field label="STATEMENT"><input className="inp" value={form.statement} onChange={(e) => setForm({ ...form, statement: e.target.value })} placeholder="e.g. BSc semester fee, NED University" /></Field>
+            </React.Fragment>)}
+            <Field label="STATUS">
+              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                <option>Active</option><option>Under review</option><option>Stopped</option>
+              </select>
+            </Field>
+          </div>
+          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add student"}</button>
+        </div>
+      )}
+
+      {list.length === 0 && !showForm ? <div className="card" style={{ marginBottom: 16 }}><Empty text={"No students in " + FEE_TYPE_NAMES[feeTab] + " yet."} /></div> : (
+        list.map((s) => (
+          <div className="card" key={s.id} style={{ marginBottom: 8 }}>
+            <div className="row between">
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} {s.status !== "Active" && <span className="badge" style={{ background: "#EEF0EE", color: "#5A6560", marginLeft: 6 }}>{s.status}</span>}</div>
+                <div className="muted" style={{ marginTop: 2 }}>
+                  {feeTab === "tuition" && ["LEB: " + fmtMoney(s.lebAmount), "Parent: " + fmtMoney(s.parentAmount), s.teacher && ("Teacher: " + s.teacher)].filter(Boolean).join(" · ")}
+                  {feeTab === "pps" && fmtMoney(s.amount) + "/month"}
+                  {feeTab === "uni" && [fmtMoney(s.amount), s.statement].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+              <div className="row">
+                {s.status === "Active" && (
+                  <button className={"paychip " + (s.payments && s.payments[m] ? "on" : "off")} onClick={() => togglePaid(s.id)}>
+                    {s.payments && s.payments[m] ? "Paid ✓" : "Mark paid"}
+                  </button>
+                )}
+                <button className="btn ghost sm" onClick={() => { setForm({ ...blank, ...s }); setEditId(s.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>
+                <button className="btn danger sm" onClick={() => { if (confirm("Remove " + s.name + "?")) update((d) => { d.students = d.students.filter((x) => x.id !== s.id); return d; }); }}>✕</button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Monthly fee data — WhatsApp message</div>
+          <div className="row">
+            <input type="month" className="inp" style={{ width: "auto" }} value={msgMonth} onChange={(e) => setMsgMonth(e.target.value)} />
+            <CopyBtn text={feeMessage} label="Copy message" />
+          </div>
+        </div>
+        <div className="mono">{feeMessage}</div>
+        <div className="faint" style={{ marginTop: 8 }}>Includes all Active students in the three categories. Copy and paste directly into WhatsApp — *bold* and _italic_ will format automatically.</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Staff ---------- */
+function Staff({ data, update }) {
+  const blank = { name: "", role: "", program: "", salary: "" };
+  const [form, setForm] = useState(blank);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const m = thisMonth();
+  const payroll = data.staff.reduce((a, s) => a + (Number(s.salary) || 0), 0);
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    update((d) => {
+      if (editId) d.staff = d.staff.map((s) => (s.id === editId ? { ...s, ...form } : s));
+      else d.staff.push({ ...form, id: uid(), payments: {} });
+      return d;
+    });
+    setForm(blank); setEditId(null); setShowForm(false);
+  };
+
+  const togglePaid = (id) =>
+    update((d) => {
+      d.staff = d.staff.map((s) => {
+        if (s.id !== id) return s;
+        const payments = Object.assign({}, s.payments || {});
+        if (payments[m]) delete payments[m]; else payments[m] = true;
+        return { ...s, payments };
+      });
+      return d;
+    });
+
+  return (
+    <div>
+      <div className="row between" style={{ marginBottom: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 18 }}>Teachers & Workers</h2>
+          <div className="muted">{data.staff.length} paid staff · {fmtMoney(payroll)}/month · Marking salaries for {monthLabel(m)}</div>
+        </div>
+        <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add staff"}</button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="grid2">
+            <Field label="NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label="ROLE"><input className="inp" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. Math Teacher, Admin" /></Field>
+            <Field label="PROGRAM"><input className="inp" list="progList2" value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })} />
+              <datalist id="progList2">{data.programs.map((p) => <option key={p.id} value={p.name} />)}</datalist></Field>
+            <Field label="MONTHLY SALARY (RS)"><input type="number" className="inp" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></Field>
+          </div>
+          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add staff"}</button>
+        </div>
+      )}
+
+      {data.staff.length === 0 && !showForm ? <div className="card"><Empty text="No staff added yet. Add your paid teachers and workers here." /></div> : (
+        data.staff.map((s) => (
+          <div className="card" key={s.id} style={{ marginBottom: 8 }}>
+            <div className="row between">
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+                <div className="muted" style={{ marginTop: 2 }}>{[s.role, s.program, fmtMoney(s.salary) + "/mo"].filter(Boolean).join(" · ")}</div>
+              </div>
+              <div className="row">
+                <button className={"paychip " + (s.payments && s.payments[m] ? "on" : "off")} onClick={() => togglePaid(s.id)}>
+                  {s.payments && s.payments[m] ? "Salary paid ✓" : "Mark paid"}
+                </button>
+                <button className="btn ghost sm" onClick={() => { setForm({ ...s }); setEditId(s.id); setShowForm(true); }}>Edit</button>
+                <button className="btn danger sm" onClick={() => { if (confirm("Remove " + s.name + "?")) update((d) => { d.staff = d.staff.filter((x) => x.id !== s.id); return d; }); }}>✕</button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+/* ---------- Reports ---------- */
+function Reports({ data }) {
+  const [month, setMonth] = useState(thisMonth());
+
+  const report = useMemo(() => {
+    const active = data.students.filter((s) => s.status === "Active");
+    const paidStudents = data.students.filter((s) => s.payments && s.payments[month]);
+    const paidStaff = data.staff.filter((s) => s.payments && s.payments[month]);
+    const tuitionDisbursed = paidStudents.reduce((a, s) => a + lebCost(s), 0);
+    const salariesPaid = paidStaff.reduce((a, s) => a + (Number(s.salary) || 0), 0);
+    const byStatus = {};
+    data.programs.forEach((p) => { (byStatus[p.status] = byStatus[p.status] || []).push(p.name); });
+    const byType = (type) => active.filter((s) => (s.type || "tuition") === type);
+
+    let t = "LOCAL EDUCATION BOARD — KHARADAR\nMONTHLY REPORT — " + monthLabel(month).toUpperCase() + "\n\n";
+    t += "1. PROGRAMS\n";
+    if (data.programs.length === 0) t += "No programs recorded.\n";
+    PROGRAM_STATUSES.forEach((s) => { if (byStatus[s]) t += "• " + s + ": " + byStatus[s].join(", ") + "\n"; });
+
+    t += "\n2. TUITION FEE SUPPORT\n";
+    t += "• Tuition Fees: " + byType("tuition").length + " students\n";
+    t += "• PPS Afghan Student Fees: " + byType("pps").length + " students\n";
+    t += "• University & Other: " + byType("uni").length + " students\n";
+    t += "• Fees disbursed this month: " + paidStudents.length + " students — " + fmtMoney(tuitionDisbursed) + "\n";
+    const pending = active.filter((s) => !(s.payments && s.payments[month]));
+    if (pending.length) t += "• Pending: " + pending.map((s) => s.name).join(", ") + "\n";
+
+    t += "\n3. STAFF & PAYROLL\n";
+    t += "• Total paid staff: " + data.staff.length + "\n";
+    t += "• Salaries paid this month: " + paidStaff.length + " — " + fmtMoney(salariesPaid) + "\n";
+    const pendingStaff = data.staff.filter((s) => !(s.payments && s.payments[month]));
+    if (pendingStaff.length) t += "• Salaries pending: " + pendingStaff.map((s) => s.name).join(", ") + "\n";
+
+    t += "\n4. PRF / COUNCIL APPROVALS\n";
+    if (data.prfs.length === 0) t += "No PRFs recorded.\n";
+    data.prfs.forEach((p) => { t += "• " + p.programName + " — " + p.status + "\n"; });
+
+    t += "\n5. TOTAL EXPENDITURE THIS MONTH\n" + fmtMoney(tuitionDisbursed + salariesPaid) + "\n";
+    t += "\nPrepared via LEB Kharadar Register.";
+    return t;
+  }, [data, month]);
+
+  return (
+    <div>
+      <div className="row between" style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: 18 }}>Monthly Report</h2>
+        <div className="row">
+          <input type="month" className="inp" style={{ width: "auto" }} value={month} onChange={(e) => setMonth(e.target.value)} />
+          <CopyBtn text={report} label="Copy report" />
+        </div>
+      </div>
+      <div className="card"><div className="mono">{report}</div></div>
+      <div className="faint" style={{ marginTop: 8 }}>Compiles automatically from Programs, Tuition Support, Staff, and PRF data.</div>
+    </div>
+  );
+}
+
+/* ---------- WhatsApp announcements ---------- */
+function WhatsApp({ data, update }) {
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [newGroup, setNewGroup] = useState("");
+
+  const draftFromProgram = (p) => {
+    setTitle(p.name + " — Announcement");
+    setMessage("*LEB KHARADAR — ANNOUNCEMENT* 📢\n\nAlhamdulillah, we are pleased to announce *" + p.name + "*" + (p.startDate ? " starting from *" + p.startDate + "*" : "") + ".\n\n" + (p.notes ? p.notes + "\n\n" : "") + "For registration and details, please contact the LEB Kharadar office.\n\nJazakAllah,\nLocal Education Board — Kharadar");
+  };
+
+  const saveAnnouncement = () => {
+    if (!message.trim()) return;
+    update((d) => { d.announcements.unshift({ id: uid(), title: title || "Announcement", message, date: new Date().toISOString().slice(0, 10), sentTo: [] }); return d; });
+    setTitle(""); setMessage("");
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div className="card">
+        <h2 style={{ fontSize: 16, marginBottom: 8 }}>Compose announcement</h2>
+        {data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="lbl">QUICK DRAFT FROM A PROGRAM</div>
+            <div className="row">
+              {data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).map((p) => (
+                <button key={p.id} className="btn soft sm" onClick={() => draftFromProgram(p)}>{p.name}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <Field label="TITLE (FOR YOUR RECORD)"><input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+        <Field label="MESSAGE"><textarea rows="8" className="inp" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type or generate the WhatsApp message… *bold* works in WhatsApp." /></Field>
+        <div className="row">
+          <button className="btn" onClick={saveAnnouncement}>Save to send-list</button>
+          {message && <CopyBtn text={message} label="Copy message" />}
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Your WhatsApp groups</div>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <input className="inp" style={{ flex: 1, width: "auto" }} value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="Add a group name"
+            onKeyDown={(e) => { if (e.key === "Enter" && newGroup.trim()) { update((d) => { d.groups.push({ id: uid(), name: newGroup.trim() }); return d; }); setNewGroup(""); } }} />
+          <button className="btn ghost" onClick={() => { if (newGroup.trim()) { update((d) => { d.groups.push({ id: uid(), name: newGroup.trim() }); return d; }); setNewGroup(""); } }}>Add</button>
+        </div>
+        <div className="row">
+          {data.groups.map((g) => (
+            <span key={g.id} className="badge" style={{ background: "#E3F2E9", color: "#0E3B2E", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {g.name}
+              <span style={{ color: "#A33222", cursor: "pointer" }} onClick={() => update((d) => { d.groups = d.groups.filter((x) => x.id !== g.id); return d; })}>✕</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Send checklist</div>
+        {data.announcements.length === 0 ? <Empty text="Saved announcements appear here with a checklist of groups, so nothing gets missed." /> : (
+          data.announcements.map((a) => (
+            <div key={a.id} style={{ border: "1px solid #E4E7E4", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+              <div className="row between" style={{ marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{a.title} <span className="faint">· {a.date}</span></div>
+                <div className="row">
+                  <CopyBtn text={a.message} />
+                  <button className="btn danger sm" onClick={() => update((d) => { d.announcements = d.announcements.filter((x) => x.id !== a.id); return d; })}>✕</button>
+                </div>
+              </div>
+              <div className="muted" style={{ marginBottom: 8, whiteSpace: "pre-wrap" }}>{a.message.slice(0, 160)}{a.message.length > 160 ? "…" : ""}</div>
+              <div className="lbl">SENT TO ({a.sentTo.length}/{data.groups.length})</div>
+              <div className="row">
+                {data.groups.map((g) => {
+                  const sent = a.sentTo.includes(g.id);
+                  return (
+                    <button key={g.id} className={"paychip " + (sent ? "on" : "off")}
+                      onClick={() => update((d) => {
+                        d.announcements = d.announcements.map((x) => {
+                          if (x.id !== a.id) return x;
+                          const sentTo = x.sentTo.includes(g.id) ? x.sentTo.filter((y) => y !== g.id) : x.sentTo.concat(g.id);
+                          return { ...x, sentTo };
+                        });
+                        return d;
+                      })}>
+                      {sent ? "✓ " : ""}{g.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
