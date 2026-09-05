@@ -1,940 +1,1768 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LEB Kharadar Register</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEB Kharadar — Board Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #F3F4F1; color: #1B1F1D; }
-  input, select, textarea, button { font-family: inherit; }
-  .card { background: #fff; border: 1px solid #E4E7E4; border-radius: 12px; padding: 16px; }
-  .inp { width: 100%; border: 1px solid #D8DDD9; border-radius: 8px; padding: 8px 12px; font-size: 14px; background: #fff; }
-  .inp:focus { outline: 2px solid #1E9E6A55; }
-  .lbl { display: block; font-size: 11px; font-weight: 600; color: #5A6560; letter-spacing: .04em; margin-bottom: 4px; }
-  .fld { margin-bottom: 12px; }
-  .btn { border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; background: #0E3B2E; color: #fff; }
-  .btn:active { transform: scale(.96); }
-  .btn:disabled { opacity: .5; cursor: default; }
-  .btn.ghost { background: transparent; color: #0E3B2E; border: 1.5px solid #0E3B2E; }
-  .btn.soft { background: #E3F2E9; color: #0E3B2E; }
-  .btn.danger { background: transparent; color: #A33222; border: 1px solid #E5C2BC; }
-  .btn.sm { padding: 5px 12px; font-size: 12px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .mono { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #F8F9F7; border: 1px dashed #C9D2CC; border-radius: 8px; padding: 12px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  @media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .between { justify-content: space-between; }
-  .muted { color: #5A6560; font-size: 12px; }
-  .faint { color: #8A938E; font-size: 12px; }
-  .tabbtn { padding: 6px 12px; border: none; border-radius: 8px 8px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-  .subtab { padding: 6px 12px; border: none; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
-  .empty { text-align: center; padding: 40px 10px; color: #8A938E; font-size: 13px; }
-  .paychip { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
-  .paychip.on { background: #1E9E6A; color: #fff; }
-  .paychip.off { background: #EEF0EE; color: #5A6560; border: 1px dashed #B9C2BC; }
+:root{
+  --ink:#0E3330; --ink-2:#15443F; --ink-3:#1D554E;
+  --paper:#EDF1EF; --surface:#FFFFFF; --line:#D2DAD7; --line-strong:#9EACA8;
+  --text:#16211F; --muted:#5B6B67;
+  --gold:#8A6100; --gold-soft:#F6EBD2; --gold-line:#D9BE7E;
+  --green:#1B6B47; --green-soft:#E2F0E8;
+  --red:#9E241D; --red-soft:#FAE6E4;
+  --blue:#1B4F7A; --blue-soft:#E4EDF5;
+  --r:3px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  background:var(--paper); color:var(--text);
+  font-size:14.5px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.serif{font-family:'IBM Plex Serif',Georgia,serif;font-weight:500;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--ink-3)}
+
+/* ---------- shell ---------- */
+#app{display:none}
+.shell{display:flex;min-height:100vh}
+.side{
+  width:222px;flex:0 0 222px;background:var(--ink);color:#DDE7E4;
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+}
+.brand{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.1)}
+.brand .mark{font-family:'IBM Plex Serif',serif;font-size:19px;color:#fff;line-height:1.15}
+.brand .sub{font-size:11.5px;color:#8FAAA4;margin-top:5px;line-height:1.35}
+.nav{padding:10px 0;flex:1;overflow:auto}
+.nav a{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:9px 18px;color:#C3D4D0;text-decoration:none;font-size:14px;cursor:pointer;
+  border-left:3px solid transparent;
+}
+.nav a:hover{background:rgba(255,255,255,.05);color:#fff}
+.nav a.on{background:var(--ink-2);color:#fff;border-left-color:var(--gold-line)}
+.nav .pill{background:var(--gold-line);color:#3B2A00;font-size:11px;font-weight:600;
+  border-radius:9px;padding:0 6px;min-width:18px;text-align:center}
+.side-foot{padding:12px 18px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;color:#8FAAA4}
+.side-foot b{color:#E6EFED;font-weight:500;display:block}
+.side-foot button{background:none;border:none;color:#8FAAA4;padding:0;margin-top:6px;cursor:pointer;text-decoration:underline}
+
+.main{flex:1;min-width:0;padding:26px 30px 70px;max-width:1280px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.page-head h1{margin:0;font-size:25px}
+.page-head p{margin:5px 0 0;color:var(--muted);font-size:13.5px;max-width:62ch}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- controls ---------- */
+.btn{
+  background:var(--ink);color:#fff;border:1px solid var(--ink);
+  padding:7px 14px;border-radius:var(--r);cursor:pointer;font-size:13.5px;font-weight:500;
+}
+.btn:hover{background:var(--ink-2)}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line-strong)}
+.btn.ghost:hover{background:#fff}
+.btn.gold{background:var(--gold);border-color:var(--gold)}
+.btn.gold:hover{filter:brightness(1.12)}
+.btn.danger{background:transparent;color:var(--red);border-color:#DDBAB7}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+input,select,textarea{
+  width:100%;background:#fff;border:1px solid var(--line-strong);border-radius:var(--r);
+  padding:7px 9px;font-size:14px;
+}
+textarea{min-height:78px;resize:vertical;line-height:1.55}
+input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;box-shadow:0 0 0 2px rgba(29,85,78,.13)}
+.field{margin-bottom:14px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:860px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+/* ---------- panels ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:20px}
+.panel > h2{
+  margin:0;padding:12px 16px;font-size:16px;border-bottom:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.panel .body{padding:16px}
+.panel .body.flush{padding:0}
+
+/* ---------- ledger table ---------- */
+.ledger{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.ledger th{
+  text-align:left;font-size:12px;font-weight:600;color:var(--muted);
+  padding:9px 10px;border-bottom:2px solid var(--line-strong);white-space:nowrap;
+}
+.ledger td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.ledger tbody tr:hover{background:#F7F9F8}
+.ledger .num{text-align:right;font-variant-numeric:tabular-nums}
+.ledger .sn{color:var(--muted);width:44px}
+.ledger tfoot td{
+  padding:10px;font-weight:600;border-top:2px solid var(--line-strong);
+  border-bottom:3px double var(--line-strong);background:#FAFBFB;
+}
+.scroll{overflow-x:auto}
+.ledger input,.ledger select{border-color:transparent;background:transparent;padding:4px 6px}
+.ledger input:hover,.ledger select:hover{border-color:var(--line)}
+.ledger input:focus,.ledger select:focus{background:#fff;border-color:var(--ink-3)}
+
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:11px;white-space:nowrap}
+.t-green{background:var(--green-soft);color:var(--green)}
+.t-gold{background:var(--gold-soft);color:var(--gold)}
+.t-red{background:var(--red-soft);color:var(--red)}
+.t-blue{background:var(--blue-soft);color:var(--blue)}
+.t-grey{background:#EAEEEC;color:var(--muted)}
+
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs button{
+  background:none;border:none;border-bottom:3px solid transparent;
+  padding:11px 16px;cursor:pointer;font-size:14px;color:var(--muted);
+}
+.tabs button.on{color:var(--text);border-bottom-color:var(--gold);font-weight:500}
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--line);background:#fff;border-radius:var(--r);overflow:hidden}
+.stats > div{padding:14px 16px;border-right:1px solid var(--line)}
+.stats > div:last-child{border-right:none}
+.stats .k{font-size:12px;color:var(--muted)}
+.stats .v{font-family:'IBM Plex Serif',serif;font-size:24px;margin-top:3px;font-variant-numeric:tabular-nums}
+@media(max-width:860px){.stats{grid-template-columns:1fr 1fr}.stats>div{border-bottom:1px solid var(--line)}}
+
+.empty{padding:34px 16px;text-align:center;color:var(--muted)}
+.empty p{margin:0 0 12px}
+
+.note{background:var(--gold-soft);border:1px solid var(--gold-line);border-radius:var(--r);
+  padding:10px 13px;font-size:13px;color:#4A3500;margin-bottom:16px}
+.note.warn{background:var(--red-soft);border-color:#E0B5B1;color:#6E1913}
+.note.ok{background:var(--green-soft);border-color:#B4D6C4;color:#125034}
+
+/* ---------- modal ---------- */
+.veil{position:fixed;inset:0;background:rgba(12,30,28,.5);display:flex;align-items:flex-start;
+  justify-content:center;padding:36px 16px;overflow:auto;z-index:50}
+.modal{background:#fff;border-radius:var(--r);width:100%;max-width:820px;
+  box-shadow:0 18px 50px rgba(6,26,24,.3);animation:rise .16s ease-out}
+@keyframes rise{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.modal{animation:none}}
+.modal header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:center}
+.modal header h3{margin:0;font-size:17px}
+.modal .content{padding:18px;max-height:66vh;overflow:auto}
+.modal footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;
+  justify-content:flex-end;gap:8px;background:#FAFBFB}
+.x{background:none;border:none;font-size:21px;line-height:1;cursor:pointer;color:var(--muted)}
+
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);
+  color:#fff;padding:10px 18px;border-radius:var(--r);font-size:13.5px;z-index:99;display:none}
+
+/* ---------- auth ---------- */
+#gate,#hold{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:var(--ink);background-image:radial-gradient(circle at 20% 0%,#1D554E,transparent 60%)}
+.gate-card{background:#fff;border-radius:var(--r);padding:30px;width:100%;max-width:400px}
+.gate-card h1{margin:0 0 4px;font-size:22px}
+.gate-card .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+
+.repeat-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;align-items:start}
+.repeat-row.b4{grid-template-columns:2fr 1fr 2fr 1fr auto}
+@media(max-width:860px){.repeat-row,.repeat-row.b4{grid-template-columns:1fr}}
+.mini{font-size:12px;color:var(--muted);margin-top:4px}
+.doc-preview{font-family:'IBM Plex Serif',serif;background:#fff;border:1px solid var(--line);
+  padding:24px;font-size:13.5px;line-height:1.6}
+.doc-preview h4{font-family:'IBM Plex Serif',serif;margin:16px 0 6px;font-size:14.5px}
+.doc-preview .lbl{font-weight:600}
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel" data-presets="env,react">
-const { useState, useEffect, useMemo } = React;
 
-/* ---------- storage adapter: Claude shared storage OR this device (downloaded app) ---------- */
-const STORAGE_KEY = "leb-kharadar-data";
-const store = {
-  async get() {
-    if (window.storage) {
-      try { const r = await window.storage.get(STORAGE_KEY, true); return r ? r.value : null; } catch (e) { return null; }
-    }
-    try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
-  },
-  async set(value) {
-    if (window.storage) {
-      try { await window.storage.set(STORAGE_KEY, value, true); return true; } catch (e) { return false; }
-    }
-    try { localStorage.setItem(STORAGE_KEY, value); return true; } catch (e) { return false; }
-  },
+<div id="gate">
+  <div class="gate-card">
+    <h1 class="serif">Local Education Board</h1>
+    <p class="sub">Kharadar — board workspace</p>
+
+    <div id="tab-in">
+      <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email"></div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password"></div>
+      <button class="btn" style="width:100%" onclick="signIn()">Sign in</button>
+      <p class="mini" style="margin-top:14px">New to the board?
+        <a href="#" onclick="gateMode('up');return false">Create an account</a></p>
+    </div>
+
+    <div id="tab-up" style="display:none">
+      <div class="field"><label for="su-name">Full name</label><input id="su-name" autocomplete="name"></div>
+      <div class="field"><label for="su-em">Email</label><input id="su-em" type="email" autocomplete="email"></div>
+      <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password">
+        <p class="mini">At least 6 characters.</p></div>
+      <button class="btn" style="width:100%" onclick="signUp()">Create account</button>
+      <p class="mini" style="margin-top:14px">Already have one?
+        <a href="#" onclick="gateMode('in');return false">Sign in</a></p>
+    </div>
+
+    <p id="gate-msg" class="mini" style="margin-top:12px"></p>
+    <p class="mini" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+      The first account created becomes the board admin. Everyone after that waits for the
+      admin to let them in.</p>
+  </div>
+</div>
+
+<div id="hold" style="display:none">
+  <div class="gate-card" style="max-width:440px">
+    <h1 class="serif">Waiting for approval</h1>
+    <p class="sub" id="hold-who"></p>
+    <p style="font-size:13.5px;color:var(--muted)">Your account exists, but an admin has to add you
+      to the board before you can see any records. Ask them to open <b>Board members</b> and approve you.</p>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="signOut()">Sign out</button>
+  </div>
+</div>
+
+<div id="app">
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark">Local Education<br>Board</div>
+      <div class="sub">Kharadar · Records &amp; Reporting</div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <b id="who">—</b>
+      <span id="role-lbl"></span>
+      <button onclick="signOut()">Sign out</button>
+    </div>
+  </aside>
+  <main class="main" id="view"></main>
+</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================================
+   CONFIG — paste your Supabase project details here.
+   Leave both blank to run in sample mode (nothing is saved).
+   ===================================================================== */
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+const APP_VERSION = 'v1.2';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const SHEETS = {
+  pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive' },
+  tuition:         { label:'Tuition fees',                      short:'Tuition' },
+  university:      { label:'University & others',               short:'University & others' }
 };
 
-const PROGRAM_STATUSES = ["Idea", "PRF Drafted", "Submitted to Council", "Approved", "Launched", "Completed"];
-const STATUS_COLORS = {
-  "Idea": { bg: "#EEF0EE", fg: "#5A6560" },
-  "PRF Drafted": { bg: "#FBF3DF", fg: "#8A6A14" },
-  "Submitted to Council": { bg: "#FDEBD8", fg: "#9A5A16" },
-  "Approved": { bg: "#E3F2E9", fg: "#166B45" },
-  "Launched": { bg: "#DDF0FB", fg: "#155E82" },
-  "Completed": { bg: "#E8E6F5", fg: "#4B4390" },
+let sb = null, LOCAL = true, ME = { id:null, name:'', role:'admin' };
+if (SUPABASE_URL && SUPABASE_ANON_KEY) { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); LOCAL = false; }
+
+/* ---------------------------------------------------------------------
+   Data layer.
+   With Supabase configured, everything goes to Postgres.
+   Without it, the app runs on this browser's own storage so that adding
+   and deleting behave exactly as they will once the database is wired up.
+   --------------------------------------------------------------------- */
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports'];
+const STORE_KEY = 'leb-kharadar';
+const mem = {};
+TABLES.forEach(t => mem[t] = []);
+
+let canPersist = true;
+try { window.localStorage.setItem('__leb','1'); window.localStorage.removeItem('__leb'); }
+catch(e){ canPersist = false; }
+
+function loadLocal(){
+  if (!canPersist) return;
+  try{
+    const raw = window.localStorage.getItem(STORE_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    TABLES.forEach(t => { mem[t] = Array.isArray(d[t]) ? d[t] : []; });
+  }catch(e){ console.warn('Could not read local store', e); }
+}
+function saveLocal(){
+  if (!canPersist) return;
+  try{ window.localStorage.setItem(STORE_KEY, JSON.stringify(mem)); }
+  catch(e){ console.warn('Could not write local store', e); }
+}
+function resetLocal(){
+  if (!confirm('Delete every record held in this browser? This cannot be undone.')) return;
+  TABLES.forEach(t => mem[t] = []);
+  saveLocal(); toast('Local records cleared'); go('dash');
+}
+
+const uid = () => 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
+const db = {
+  async list(table, filter){
+    if (LOCAL){
+      let rows = (mem[table] || []).slice();
+      if (filter) for (const k in filter) rows = rows.filter(r => r[k] === filter[k]);
+      return rows;
+    }
+    let q = sb.from(table).select('*');
+    if (filter) for (const k in filter) q = q.eq(k, filter[k]);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  },
+  async insert(table, row){
+    if (LOCAL){
+      const r = Object.assign({ id: uid(), created_at: new Date().toISOString() }, row);
+      mem[table].push(r); saveLocal(); return r;
+    }
+    const { data, error } = await sb.from(table).insert(row).select().single();
+    if (error) throw error; return data;
+  },
+  async update(table, id, patch){
+    if (LOCAL){
+      const r = (mem[table] || []).find(x => x.id === id);
+      if (!r) throw new Error('Record not found');
+      Object.assign(r, patch); saveLocal(); return r;
+    }
+    const { data, error } = await sb.from(table).update(patch).eq('id', id).select().single();
+    if (error) throw error; return data;
+  },
+  async remove(table, id){
+    if (LOCAL){
+      mem[table] = (mem[table] || []).filter(x => x.id !== id);
+      if (table === 'fee_cycles') mem.fee_entries = mem.fee_entries.filter(e => e.cycle_id !== id);
+      saveLocal(); return;
+    }
+    const { error } = await sb.from(table).delete().eq('id', id);
+    if (error) throw error;
+  }
 };
-const FEE_TYPES = [
-  { key: "tuition", label: "Tuition Fees" },
-  { key: "pps", label: "PPS Afghan Students" },
-  { key: "uni", label: "University & Other" },
+
+/* ---------------------------------------------------------------------
+   Small helpers
+   --------------------------------------------------------------------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const money = n => num(n).toLocaleString('en-PK');
+const todayISO = () => new Date().toISOString().slice(0,10);
+const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+const quarterOf = m => Math.floor((m-1)/3) + 1;
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 2600);
+}
+function download(blob, filename){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+/* modal -------------------------------------------------------------- */
+let modalSave = null;
+function openModal(title, html, onSave, saveLabel){
+  modalSave = onSave;
+  const v = document.createElement('div');
+  v.className = 'veil'; v.id = 'veil';
+  v.innerHTML = '<div class="modal"><header><h3 class="serif">' + esc(title) + '</h3>'
+    + '<button class="x" onclick="closeModal()" aria-label="Close">&times;</button></header>'
+    + '<div class="content">' + html + '</div>'
+    + '<footer><button class="btn ghost" onclick="closeModal()">Cancel</button>'
+    + (onSave ? '<button class="btn" onclick="modalSave()">' + esc(saveLabel || 'Save') + '</button>' : '')
+    + '</footer></div>';
+  v.addEventListener('click', e => { if (e.target === v) closeModal(); });
+  document.body.appendChild(v);
+}
+function closeModal(){ const v = $('veil'); if (v) v.remove(); modalSave = null; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+const mv = id => { const el = $(id); return el ? el.value.trim() : ''; };
+
+/* =====================================================================
+   Router
+   ===================================================================== */
+const PAGES = [
+  { id:'dash',     label:'Overview'          },
+  { id:'fees',     label:'Fee sheets'        },
+  { id:'students', label:'Student register'  },
+  { id:'cases',    label:'Tuesday cases'     },
+  { id:'programs', label:'Programmes'        },
+  { id:'prf',      label:'Permission forms'  },
+  { id:'report',   label:'Quarterly report'  },
+  { id:'members',  label:'Board members', adminOnly:true }
 ];
-const FEE_TYPE_NAMES = { tuition: "Tuition Fees", pps: "Pak Progressive School — Afghan Student Fees", uni: "University & Other" };
+let page = 'dash';
+const counts = {};
 
-const emptyData = {
-  adminPin: null,
-  programs: [],
-  students: [],
-  staff: [],
-  prfs: [],
-  groups: [{ id: "g1", name: "LEB Core Team" }, { id: "g2", name: "Teachers Group" }],
-  announcements: [],
+function drawNav(){
+  $('nav').innerHTML = PAGES.filter(p => !(p.adminOnly && (LOCAL || ME.role !== 'admin'))).map(p =>
+    '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
+    + '<span>' + p.label + '</span>'
+    + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
+}
+function go(id){ page = id; drawNav(); render(); window.scrollTo(0,0); }
+
+async function render(){
+  const v = $('view');
+  v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
+  try{
+    if (page === 'dash')      await pageDash(v);
+    if (page === 'fees')      await pageFees(v);
+    if (page === 'students')  await pageStudents(v);
+    if (page === 'cases')     await pageCases(v);
+    if (page === 'programs')  await pagePrograms(v);
+    if (page === 'prf')       await pagePRF(v);
+    if (page === 'report')    await pageReport(v);
+    if (page === 'members')   await pageMembers(v);
+  }catch(err){
+    console.error(err);
+    v.innerHTML = '<div class="note warn"><b>Could not load this page.</b><br>' + esc(err.message || err) + '</div>';
+  }
+}
+function head(title, sub, actions){
+  return '<div class="page-head"><div><h1>' + esc(title) + '</h1>'
+    + (sub ? '<p>' + esc(sub) + '</p>' : '') + '</div>'
+    + '<div class="actions">' + (actions || '') + '</div></div>';
+}
+
+/* =====================================================================
+   Overview
+   ===================================================================== */
+async function pageDash(v){
+  const now = new Date();
+  const [cycles, cases, programs, prfs] = await Promise.all([
+    db.list('fee_cycles'), db.list('cases'), db.list('programs'), db.list('prf_requests')
+  ]);
+  const cur = cycles.find(c => c.month === now.getMonth()+1 && c.year === now.getFullYear());
+  let entries = cur ? await db.list('fee_entries', { cycle_id: cur.id }) : [];
+  const disbursed = entries.reduce((s,e) => s + (e.sheet === 'pak_progressive' ? num(e.fee_amount) : num(e.leb_contribution)), 0);
+  const pending = cases.filter(c => c.decision === 'pending' || c.decision === 'deferred');
+  const live = programs.filter(p => p.status === 'ongoing' || p.status === 'planned' || p.status === 'prf_pending');
+
+  counts.cases = pending.length; counts.prf = prfs.filter(p => p.status === 'draft').length; drawNav();
+
+  const late = prfs.filter(p => p.status === 'draft' && p.event_date && daysBetween(todayISO(), p.event_date) < 15);
+
+  let h = head('Overview', MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1));
+
+  if (LOCAL) h += '<div class="note"><b>Local mode.</b> Records are saved in this browser only, so nobody else can see them and clearing your browser data wipes them. '
+    + 'Add your Supabase URL and key at the top of <code>index.html</code> to move the board onto a shared database.'
+    + (canPersist ? '' : ' <b>This browser is blocking storage, so nothing will survive a refresh here.</b>') + '</div>';
+
+  if (late.length) h += '<div class="note warn"><b>' + late.length + ' permission form' + (late.length>1?'s':'')
+    + ' still unsent inside the 15-day window.</b> ' + esc(late.map(p => p.program_name).join(', ')) + '</div>';
+
+  h += '<div class="stats">'
+    + '<div><div class="k">This month, ' + (cur ? 'sheet ' + cur.status : 'no sheet yet') + '</div><div class="v">Rs ' + money(disbursed) + '</div></div>'
+    + '<div><div class="k">Entries across 3 sheets</div><div class="v">' + entries.length + '</div></div>'
+    + '<div><div class="k">Cases awaiting a decision</div><div class="v">' + pending.length + '</div></div>'
+    + '<div><div class="k">Programmes running or planned</div><div class="v">' + live.length + '</div></div>'
+    + '</div><div style="height:20px"></div>';
+
+  h += '<div class="grid g2">';
+  h += '<div class="panel" style="margin:0"><h2>Latest cases</h2><div class="body flush">'
+    + (cases.length ? '<table class="ledger"><tbody>' + cases.slice().sort((a,b)=>b.meeting_date.localeCompare(a.meeting_date)).slice(0,6).map(c =>
+        '<tr><td>' + esc(c.applicant_name) + '<div class="mini">' + fmtDate(c.meeting_date) + ' · ' + esc(c.category.replace('_',' ')) + '</div></td>'
+        + '<td class="num">' + (num(c.amount_requested) ? 'Rs ' + money(c.amount_requested) : '—') + '</td>'
+        + '<td style="width:1%">' + decisionTag(c.decision) + '</td></tr>').join('') + '</tbody></table>'
+      : '<div class="empty"><p>No cases logged yet.</p><button class="btn" onclick="go(\'cases\')">Log a case</button></div>')
+    + '</div></div>';
+  h += '<div class="panel" style="margin:0"><h2>Programmes</h2><div class="body flush">'
+    + (live.length ? '<table class="ledger"><tbody>' + live.slice(0,6).map(p =>
+        '<tr><td>' + esc(p.title) + '<div class="mini">' + esc(p.type) + ' · ' + (p.source === 'parent_body' ? 'from parent body' : 'LEB') + '</div></td>'
+        + '<td style="width:1%">' + statusTag(p.status) + '</td></tr>').join('') + '</tbody></table>'
+      : '<div class="empty"><p>Nothing on the calendar.</p><button class="btn" onclick="go(\'programs\')">Add a programme</button></div>')
+    + '</div></div>';
+  h += '</div>';
+  v.innerHTML = h;
+}
+function decisionTag(d){
+  const m = { pending:['t-gold','Pending'], approved:['t-green','Approved'], rejected:['t-red','Rejected'],
+              deferred:['t-grey','Deferred'], forwarded:['t-blue','Forwarded'] };
+  const x = m[d] || ['t-grey', d];
+  return '<span class="tag ' + x[0] + '">' + esc(x[1]) + '</span>';
+}
+function statusTag(s){
+  const m = { planned:['t-grey','Planned'], prf_pending:['t-gold','Awaiting permission'], approved:['t-blue','Approved'],
+              ongoing:['t-green','Ongoing'], completed:['t-grey','Completed'], cancelled:['t-red','Cancelled'],
+              draft:['t-grey','Draft'], submitted:['t-gold','Submitted'], unapproved:['t-red','Not approved'],
+              finalized:['t-blue','Finalised'] };
+  const x = m[s] || ['t-grey', s];
+  return '<span class="tag ' + x[0] + '">' + esc(x[1]) + '</span>';
+}
+
+/* =====================================================================
+   Fee sheets — three tabs, one month at a time
+   ===================================================================== */
+const feeState = { month:new Date().getMonth()+1, year:new Date().getFullYear(), sheet:'pak_progressive', cycle:null, entries:[] };
+
+const COLS = {
+  pak_progressive: [
+    { k:'student_name', h:'Name of Child', w:'28%' },
+    { k:'school',       h:'School',        w:'26%' },
+    { k:'class_grade',  h:'Class',         w:'12%' },
+    { k:'fee_amount',   h:'Fees',          w:'14%', type:'number' },
+    { k:'status',       h:'Status',        w:'14%', type:'select', opts:['Paid','Unpaid','Pending'] }
+  ],
+  tuition: [
+    { k:'student_name',        h:'Name of Students',        w:'20%' },
+    { k:'school',              h:'School',                  w:'18%' },
+    { k:'leb_contribution',    h:'LEB contribution',        w:'11%', type:'number' },
+    { k:'parent_contribution', h:"Parent's Contribution",   w:'11%', type:'number' },
+    { k:'full_fee',            h:'Full Fee',                w:'11%', type:'number' },
+    { k:'tuition_teacher',     h:'Name of Tuition Teacher', w:'15%' },
+    { k:'result',              h:'Result',                  w:'11%', type:'select', opts:['','Recieved','Not received'] }
+  ],
+  university: [
+    { k:'student_name',     h:'Name of Students', w:'36%' },
+    { k:'school',           h:'Institution',      w:'36%' },
+    { k:'leb_contribution', h:'LEB contribution', w:'18%', type:'number' }
+  ]
 };
+const totalKey = s => s === 'pak_progressive' ? 'fee_amount' : 'leb_contribution';
 
-const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-const thisMonth = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); };
-const monthLabel = (ym) => {
-  if (!ym) return "";
-  const parts = ym.split("-");
-  const names = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  return names[parseInt(parts[1], 10) - 1] + " " + parts[0];
-};
-const fmtMoney = (n) => "Rs " + (Number(n) || 0).toLocaleString("en-PK");
-
-/* how much LEB pays for a student per month */
-const lebCost = (s) => Number(s.type === "tuition" ? s.lebAmount : s.amount) || 0;
-
-/* ---------- small components ---------- */
-function Badge({ text, colors }) {
-  return <span className="badge" style={{ background: colors.bg, color: colors.fg }}>{text}</span>;
+async function loadCycle(){
+  const all = await db.list('fee_cycles');
+  feeState.cycle = all.find(c => c.month === feeState.month && c.year === feeState.year) || null;
+  feeState.entries = feeState.cycle ? await db.list('fee_entries', { cycle_id: feeState.cycle.id }) : [];
 }
-function Field({ label, children }) {
-  return <label className="fld"><span className="lbl">{label}</span>{children}</label>;
-}
-function CopyBtn({ text, label }) {
-  const [done, setDone] = useState(false);
-  const copy = () => {
-    const finish = () => { setDone(true); setTimeout(() => setDone(false), 1500); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(finish).catch(() => { fallback(); finish(); });
-    } else { fallback(); finish(); }
-    function fallback() {
-      const ta = document.createElement("textarea");
-      ta.value = text; document.body.appendChild(ta); ta.select();
-      document.execCommand("copy"); document.body.removeChild(ta);
-    }
-  };
-  return <button className="btn soft sm" onClick={copy}>{done ? "Copied ✓" : (label || "Copy")}</button>;
-}
-function Empty({ text }) { return <div className="empty">{text}</div>; }
 
-/* ---------- App ---------- */
-function App() {
-  const [data, setData] = useState(null);
-  const [tab, setTab] = useState("dashboard");
-  const [saveState, setSaveState] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [pin1, setPin1] = useState("");
-  const [pin2, setPin2] = useState("");
+async function pageFees(v){
+  await loadCycle();
+  const c = feeState.cycle, locked = c && c.status === 'submitted';
 
-  useEffect(() => {
-    (async () => {
-      const raw = await store.get();
-      let parsed = emptyData;
-      if (raw) { try { parsed = { ...emptyData, ...JSON.parse(raw) }; } catch (e) {} }
-      setData(parsed);
-    })();
-  }, []);
+  const picker = '<select id="f-month" onchange="feeState.month=+this.value;render()">'
+      + MONTHS.map((m,i) => '<option value="' + (i+1) + '"' + (feeState.month === i+1 ? ' selected' : '') + '>' + m + '</option>').join('')
+      + '</select>';
+  const years = []; for (let y = new Date().getFullYear()+1; y >= 2023; y--) years.push(y);
+  const ypicker = '<select id="f-year" onchange="feeState.year=+this.value;render()">'
+      + years.map(y => '<option' + (feeState.year === y ? ' selected' : '') + '>' + y + '</option>').join('') + '</select>';
 
-  const update = (fn) => {
-    setData((prev) => {
-      const next = fn(JSON.parse(JSON.stringify(prev)));
-      (async () => {
-        setSaveState("saving");
-        const ok = await store.set(JSON.stringify(next));
-        setSaveState(ok ? "saved" : "error");
-        if (ok) setTimeout(() => setSaveState(""), 1200);
-      })();
-      return next;
-    });
-  };
+  let h = head('Fee sheets', 'One month at a time. Edit here, then download the workbook exactly as your parent body expects it.',
+    '<div style="width:140px">' + picker + '</div><div style="width:96px">' + ypicker + '</div>'
+    + (c ? '<button class="btn gold" onclick="exportWorkbook()">Download Excel</button>' : ''));
 
-  const refresh = async () => {
-    const raw = await store.get();
-    if (raw) { try { setData({ ...emptyData, ...JSON.parse(raw) }); } catch (e) {} }
-  };
-
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "leb-kharadar-backup-" + new Date().toISOString().slice(0, 10) + ".json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const importData = (file) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const incoming = JSON.parse(reader.result);
-        if (!incoming.programs && !incoming.students) { alert("This file doesn't look like a LEB backup."); return; }
-        if (confirm("Replace the current data with this backup file?")) {
-          update(() => ({ ...emptyData, ...incoming }));
-        }
-      } catch (e) { alert("Could not read this file. Make sure it's the exported .json backup."); }
-    };
-    reader.readAsText(file);
-  };
-
-  if (!data) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><div className="muted">Opening the register…</div></div>;
-
-  /* first run: create admin PIN */
-  if (!data.adminPin) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#0E3B2E", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-        <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 380 }}>
-          <div style={{ fontSize: 11, letterSpacing: ".2em", fontWeight: 600, color: "#1E9E6A", marginBottom: 4 }}>FIRST-TIME SETUP</div>
-          <h1 style={{ fontSize: 20, color: "#0E3B2E", marginBottom: 4 }}>Create the admin PIN</h1>
-          <p className="muted" style={{ marginBottom: 16 }}>The admin PIN unlocks editing, all fees and salaries, PRFs, and reports. Everyone else gets a read-only view with no money figures.</p>
-          <Field label="ADMIN PIN (4–8 DIGITS)">
-            <input type="password" inputMode="numeric" className="inp" value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 8))} />
-          </Field>
-          <Field label="CONFIRM PIN">
-            <input type="password" inputMode="numeric" className="inp" value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 8))} />
-          </Field>
-          {pin1 && pin2 && pin1 !== pin2 && <div style={{ color: "#A33222", fontSize: 12, marginBottom: 8 }}>PINs don't match yet.</div>}
-          <button className="btn" disabled={pin1.length < 4 || pin1 !== pin2}
-            onClick={() => { update((d) => { d.adminPin = pin1; return d; }); setIsAdmin(true); setPin1(""); setPin2(""); }}>
-            Set PIN & open as admin
-          </button>
-        </div>
-      </div>
-    );
+  if (!c){
+    h += '<div class="panel"><div class="empty"><p>No sheet exists for ' + MONTHS[feeState.month-1] + ' ' + feeState.year + ' yet.</p>'
+      + '<button class="btn" onclick="createCycle(false)">Start an empty sheet</button> '
+      + '<button class="btn ghost" onclick="createCycle(true)">Carry forward last month\'s names</button></div></div>';
+    v.innerHTML = h; return;
   }
 
-  const allTabs = [
-    ["dashboard", "Dashboard", false],
-    ["programs", "Programs", false],
-    ["prf", "PRF", true],
-    ["fees", "Tuition Support", true],
-    ["staff", "Staff", true],
-    ["reports", "Reports", true],
-    ["whatsapp", "WhatsApp", true],
+  if (locked) h += '<div class="note"><b>This sheet was submitted on ' + fmtDate(c.submitted_on) + '.</b> '
+    + 'Reopen it if a correction is genuinely needed — the change will be visible to everyone. '
+    + '<button class="btn sm ghost" onclick="setCycleStatus(\'finalized\')">Reopen</button></div>';
+
+  const bySheet = k => feeState.entries.filter(e => e.sheet === k);
+  const grand = feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
+
+  h += '<div class="panel"><h2>' + MONTHS[c.month-1] + ' ' + c.year + ' ' + statusTag(c.status)
+     + '<span class="actions">'
+     + (c.status !== 'submitted'
+        ? '<button class="btn sm ghost" onclick="setCycleStatus(\'' + (c.status === 'draft' ? 'finalized' : 'draft') + '\')">'
+          + (c.status === 'draft' ? 'Mark finalised' : 'Back to draft') + '</button>'
+          + '<button class="btn sm" onclick="setCycleStatus(\'submitted\')">Mark submitted</button>'
+        : '')
+     + '</span></h2>'
+     + '<div class="body flush"><div class="tabs">'
+     + Object.keys(SHEETS).map(k => '<button class="' + (feeState.sheet === k ? 'on' : '') + '" onclick="feeState.sheet=\'' + k + '\';render()">'
+         + SHEETS[k].label + ' <span class="mini">(' + bySheet(k).length + ')</span></button>').join('')
+     + '</div>' + sheetTable(feeState.sheet, locked) + '</div></div>';
+
+  h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
+     + '<div><div class="k">Tuition — LEB share</div><div class="v">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
+     + '<div><div class="k">University &amp; others</div><div class="v">Rs ' + money(sheetTotal('university')) + '</div></div>'
+     + '<div><div class="k">Month total</div><div class="v">Rs ' + money(grand) + '</div></div></div>';
+  v.innerHTML = h;
+}
+function sheetTotal(k){
+  return feeState.entries.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
+}
+function sheetTable(k, locked){
+  const cols = COLS[k];
+  const rows = feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+  let h = '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">S.No</th>'
+    + cols.map(c => '<th style="width:' + c.w + '"' + (c.type === 'number' ? ' class="num"' : '') + '>' + esc(c.h) + '</th>').join('')
+    + (locked ? '' : '<th style="width:1%"></th>') + '</tr></thead><tbody>';
+  if (!rows.length){
+    h += '<tr><td colspan="' + (cols.length+2) + '"><div class="empty"><p>No rows on this sheet.</p></div></td></tr>';
+  }
+  rows.forEach((r,i) => {
+    h += '<tr><td class="sn">' + (r.serial_no || i+1) + '</td>'
+      + cols.map(c => '<td' + (c.type === 'number' ? ' class="num"' : '') + '>' + cellInput(r, c, locked) + '</td>').join('')
+      + (locked ? '' : '<td><button class="btn sm danger" onclick="delEntry(\'' + r.id + '\')" title="Remove row">&times;</button></td>')
+      + '</tr>';
+  });
+  h += '</tbody><tfoot><tr><td></td>'
+    + cols.map(c => '<td' + (c.type === 'number' ? ' class="num"' : '') + '>'
+        + (c.k === totalKey(k) ? 'Rs ' + money(sheetTotal(k)) : (c.k === cols[0].k ? 'Total (' + rows.length + ' students)' : '')) + '</td>').join('')
+    + (locked ? '' : '<td></td>') + '</tr></tfoot></table></div>';
+  if (!locked) h += '<div style="padding:12px 16px;border-top:1px solid var(--line)">'
+    + '<button class="btn ghost" onclick="addEntry()">Add row</button> '
+    + '<button class="btn ghost" onclick="addFromRegister()">Add from student register</button> '
+    + '<button class="btn ghost" onclick="openImport(\'fees\')">Import from Excel</button></div>';
+  return h;
+}
+function cellInput(r, c, locked){
+  const val = r[c.k] ?? '';
+  if (locked) return esc(c.type === 'number' ? (num(val) ? money(val) : '') : val);
+  const on = 'onchange="saveCell(\'' + r.id + '\',\'' + c.k + '\',this.value)"';
+  if (c.type === 'select')
+    return '<select ' + on + '>' + c.opts.map(o => '<option' + (String(val) === o ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
+  if (c.type === 'number')
+    return '<input class="num" type="number" min="0" step="1" value="' + esc(val || '') + '" ' + on + ' style="text-align:right">';
+  return '<input value="' + esc(val) + '" ' + on + '>';
+}
+
+async function createCycle(carry){
+  const cycle = await db.insert('fee_cycles', { month:feeState.month, year:feeState.year, status:'draft' });
+  if (carry){
+    const all = (await db.list('fee_cycles')).filter(c => c.id !== cycle.id)
+      .sort((a,b) => (b.year*12+b.month) - (a.year*12+a.month));
+    const prev = all.find(c => (c.year*12+c.month) < (cycle.year*12+cycle.month));
+    if (prev){
+      const old = await db.list('fee_entries', { cycle_id: prev.id });
+      for (const e of old){
+        await db.insert('fee_entries', {
+          cycle_id:cycle.id, sheet:e.sheet, serial_no:e.serial_no, student_id:e.student_id || null,
+          student_name:e.student_name, school:e.school, class_grade:e.class_grade,
+          fee_amount:e.fee_amount, leb_contribution:e.leb_contribution, parent_contribution:e.parent_contribution,
+          full_fee:e.full_fee, tuition_teacher:e.tuition_teacher, status:e.status, result:'', remarks:''
+        });
+      }
+      toast('Carried forward ' + old.length + ' rows from ' + MONTHS[prev.month-1]);
+    } else toast('No earlier sheet to carry forward from');
+  }
+  render();
+}
+async function setCycleStatus(s){
+  await db.update('fee_cycles', feeState.cycle.id, { status:s, submitted_on: s === 'submitted' ? todayISO() : null });
+  toast(s === 'submitted' ? 'Marked submitted' : 'Status updated'); render();
+}
+async function addEntry(){
+  const k = feeState.sheet;
+  const n = feeState.entries.filter(e => e.sheet === k).length + 1;
+  await db.insert('fee_entries', { cycle_id:feeState.cycle.id, sheet:k, serial_no:n,
+    status: k === 'pak_progressive' ? 'Paid' : '', result:'' });
+  render();
+}
+async function saveCell(id, key, val){
+  await db.update('fee_entries', id, { [key]: val });
+  const e = feeState.entries.find(x => x.id === id); if (e) e[key] = val;
+  if (key.includes('contribution') || key.includes('fee')) render();
+}
+async function delEntry(id){
+  await db.remove('fee_entries', id); toast('Row removed'); render();
+}
+async function addFromRegister(){
+  const students = await db.list('students');
+  if (!students.length){ toast('The student register is empty'); return; }
+  openModal('Add from student register',
+    '<p class="mini" style="margin-top:0">Tick the students to add to the <b>' + esc(SHEETS[feeState.sheet].short) + '</b> sheet.</p>'
+    + students.map(s => '<label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);color:var(--text)">'
+      + '<input type="checkbox" value="' + s.id + '" class="pick" style="width:auto">'
+      + '<span>' + esc(s.full_name) + ' <span class="mini">' + esc(s.institution || '') + (s.class_year ? ' · ' + esc(s.class_year) : '') + '</span></span></label>').join(''),
+    async () => {
+      const picked = [...document.querySelectorAll('.pick:checked')].map(i => i.value);
+      let n = feeState.entries.filter(e => e.sheet === feeState.sheet).length;
+      for (const id of picked){
+        const s = students.find(x => x.id === id);
+        await db.insert('fee_entries', { cycle_id:feeState.cycle.id, sheet:feeState.sheet, serial_no:++n,
+          student_id:s.id, student_name:s.full_name, school:s.institution, class_grade:s.class_year,
+          status: feeState.sheet === 'pak_progressive' ? 'Paid' : '' });
+      }
+      closeModal(); toast(picked.length + ' added'); render();
+    }, 'Add selected');
+}
+
+/* =====================================================================
+   Excel export — rebuilds the workbook in your existing layout
+   ===================================================================== */
+async function exportWorkbook(){
+  if (typeof ExcelJS === 'undefined'){ toast('Excel library did not load — check your connection'); return; }
+  const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'LEB Kharadar'; wb.created = new Date();
+
+  const rowsOf = k => feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+  const name = s => s.slice(0,31);
+  const setW = (ws, map) => { for (const col in map) ws.getColumn(col).width = map[col]; };
+  const title = (ws, cell, range, text, size) => {
+    ws.mergeCells(range); const t = ws.getCell(cell);
+    t.value = text; t.font = { bold:true, size:size }; t.alignment = { horizontal:'center', vertical:'middle' };
+  };
+  const headCell = (ws, ref, text, size, fill) => {
+    const x = ws.getCell(ref); x.value = text; x.font = { bold:true, size:size || 14 };
+    x.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    x.border = { bottom:{ style:'thin' } };
+    if (fill) x.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:fill } };
+  };
+  const put = (ws, ref, val, opts) => {
+    const x = ws.getCell(ref); x.value = val;
+    x.font = { size:(opts && opts.size) || 14, bold:!!(opts && opts.bold) };
+    if (opts && opts.align) x.alignment = { horizontal:opts.align };
+    if (opts && opts.fmt) x.numFmt = opts.fmt;
+  };
+
+  /* ---- Sheet 1 : Pak Progressive ---- */
+  {
+    const ws = wb.addWorksheet(name('Pak Progressive Fees - ' + M));
+    setW(ws, { A:10, B:59.43, C:69.86, D:29.86, E:27.86, F:23.43 });
+    title(ws, 'A1', 'A1:E1', 'Pak Progressive School', 26);
+    title(ws, 'A2', 'A2:E2', 'Afghan Students ' + M + ' Fees ' + Y, 26);
+    ['A4','B4','C4','D4','E4'].forEach((r,i) => headCell(ws, r, ['S.No','Name of Child','School','Class','Fees'][i], 18));
+    headCell(ws, 'F4', 'Status', 22, 'FFC4BD97');
+    const rows = rowsOf('pak_progressive');
+    rows.forEach((e,i) => {
+      const r = 5 + i;
+      put(ws, 'A'+r, i+1, { size:18 });
+      put(ws, 'B'+r, e.student_name || '', { size:18 });
+      put(ws, 'C'+r, e.school || '', { size:18 });
+      put(ws, 'D'+r, e.class_grade || '', { size:18 });
+      put(ws, 'E'+r, num(e.fee_amount) || null, { size:18, fmt:'#,##0' });
+      put(ws, 'F'+r, e.status || '', { size:18 });
+    });
+    const tr = 5 + rows.length;
+    put(ws, 'D'+tr, 'TOTAL', { size:18, bold:true });
+    const tot = ws.getCell('E'+tr);
+    tot.value = rows.length ? { formula:'SUM(E5:E' + (tr-1) + ')' } : 0;
+    tot.font = { size:18, bold:true }; tot.numFmt = '#,##0';
+    tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+    ws.getRow(4).height = 30;
+  }
+
+  /* ---- Sheet 2 : Tuition ---- */
+  {
+    const ws = wb.addWorksheet(name('Tution Fees - ' + M + ' ' + Y));
+    setW(ws, { A:8, B:60.43, C:60.71, D:29.71, E:23.71, F:29.29, G:26, H:37.86 });
+    title(ws, 'A1', 'A1:G1', 'Tuition', 14);
+    title(ws, 'A2', 'A2:G2', 'Fee ' + M + ' ' + Y, 14);
+    ['S.No',"Name of Students",'School','LEB contribution',"Parent's Contribution",'Full Fee','Name of Tuition Teacher','Result']
+      .forEach((t,i) => headCell(ws, String.fromCharCode(65+i) + '3', t, 14));
+    const rows = rowsOf('tuition');
+    rows.forEach((e,i) => {
+      const r = 4 + i;
+      put(ws, 'A'+r, i+1);
+      put(ws, 'B'+r, e.student_name || '');
+      put(ws, 'C'+r, e.school || '');
+      put(ws, 'D'+r, num(e.leb_contribution) || null, { fmt:'#,##0' });
+      put(ws, 'E'+r, num(e.parent_contribution) || null, { fmt:'#,##0' });
+      put(ws, 'F'+r, num(e.full_fee) || null, { fmt:'#,##0' });
+      put(ws, 'G'+r, e.tuition_teacher || '');
+      put(ws, 'H'+r, e.result || '');
+    });
+    const last = 3 + rows.length, tr = last + 2;
+    ws.mergeCells('B' + tr + ':C' + tr);
+    put(ws, 'B'+tr, 'Total', { bold:true, align:'center' });
+    const tot = ws.getCell('D'+tr);
+    tot.value = rows.length ? { formula:'SUM(D4:D' + last + ')' } : 0;
+    tot.font = { size:14, bold:true }; tot.numFmt = '#,##0';
+    tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+  }
+
+  /* ---- Sheet 3 : University & others ---- */
+  {
+    const ws = wb.addWorksheet(name('University & Other Fees - ' + M));
+    setW(ws, { B:46.43, C:15.71, D:82.86, E:32.57, F:21.43, G:25.14 });
+    title(ws, 'B4', 'B4:G4', 'University and Others', 24);
+    title(ws, 'B5', 'B5:G5', 'Fees ' + M + ' ' + Y, 24);
+    headCell(ws, 'C7', 'S.No', 14);
+    headCell(ws, 'D7', 'Name of Students', 14, 'FFEFEFEF');
+    headCell(ws, 'E7', 'Institution', 14, 'FFEFEFEF');
+    headCell(ws, 'F7', 'LEB contribution', 16, 'FFEFEFEF');
+    const rows = rowsOf('university');
+    rows.forEach((e,i) => {
+      const r = 8 + i;
+      put(ws, 'C'+r, i+1);
+      put(ws, 'D'+r, e.student_name || '');
+      put(ws, 'E'+r, e.school || '');
+      put(ws, 'F'+r, num(e.leb_contribution) || null, { fmt:'#,##0' });
+    });
+    const last = 7 + rows.length, tr = last + 2;
+    ws.mergeCells('C' + tr + ':E' + tr);
+    put(ws, 'C'+tr, 'Total', { bold:true, align:'center' });
+    const tot = ws.getCell('F'+tr);
+    tot.value = rows.length ? { formula:'SUM(F8:F' + last + ')' } : 0;
+    tot.font = { size:14, bold:true }; tot.numFmt = '#,##0';
+    tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+           M + ' - LEB ' + Y + '.xlsx');
+  toast('Workbook downloaded');
+}
+
+
+/* =====================================================================
+   Import from Excel
+   Reads any workbook, finds the header row, guesses the column mapping
+   and shows you what it will bring in before anything is saved.
+   ===================================================================== */
+const IMPORT = { grid:[], sheets:[], wsIndex:0, headerRow:0, target:null, fields:[], book:null };
+
+const normHead = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const colLetter = i => { let n = i + 1, out = ''; while (n > 0){ const r = (n-1) % 26; out = String.fromCharCode(65+r) + out; n = Math.floor((n-1)/26); } return out; };
+const toNum = v => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
+
+function cellText(v){
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return v.toISOString().slice(0,10);
+  if (typeof v !== 'object') return String(v);
+  if (Array.isArray(v)) return v.map(cellText).join('');
+  // Rich text, hyperlinks and formulas all nest their real value one level down,
+  // and Excel autolinks things like "S.No" into a hyperlink wrapping rich text.
+  if (Array.isArray(v.richText)) return v.richText.map(r => cellText(r.text)).join('');
+  if (v.text !== undefined && v.text !== null) return cellText(v.text);
+  if (v.result !== undefined && v.result !== null) return cellText(v.result);
+  return '';
+}
+function wsToGrid(ws){
+  const grid = [];
+  const width = Math.max(ws.actualColumnCount || 0, ws.columnCount || 0, 8);
+  ws.eachRow({ includeEmpty:true }, (row, n) => {
+    const arr = [];
+    for (let c = 1; c <= width; c++) arr.push(cellText(row.getCell(c).value).trim());
+    grid[n-1] = arr;
+  });
+  for (let i = 0; i < grid.length; i++) if (!grid[i]) grid[i] = [];
+  return grid;
+}
+function detectHeaderRow(grid, labels){
+  const want = labels.map(normHead).filter(Boolean);
+  let best = { row:0, score:-1 };
+  for (let i = 0; i < Math.min(grid.length, 25); i++){
+    const cells = (grid[i] || []).map(normHead).filter(Boolean);
+    let score = 0;
+    cells.forEach(c => { if (want.some(w => c === w || c.indexOf(w) === 0 || w.indexOf(c) === 0)) score++; });
+    if (score > best.score) best = { row:i, score:score };
+  }
+  return best.score > 0 ? best.row : 0;
+}
+function guessColumn(headerCells, label){
+  const want = normHead(label);
+  let exact = -1, partial = -1;
+  headerCells.forEach((h, i) => {
+    const n = normHead(h); if (!n) return;
+    if (n === want && exact < 0) exact = i;
+    else if (partial < 0 && (n.indexOf(want) >= 0 || want.indexOf(n) >= 0)) partial = i;
+  });
+  return exact >= 0 ? exact : partial;
+}
+
+function importFields(target){
+  if (target === 'students') return [
+    { k:'full_name',     h:'Name',        required:true },
+    { k:'guardian_name', h:'Guardian' },
+    { k:'institution',   h:'Institution' },
+    { k:'class_year',    h:'Class' },
+    { k:'contact',       h:'Contact' }
   ];
-  const tabs = allTabs.filter((t) => isAdmin || !t[2]);
-
-  const tryLogin = () => {
-    if (pinInput === data.adminPin) { setIsAdmin(true); setShowLogin(false); setPinInput(""); setLoginError(""); }
-    else setLoginError("Incorrect PIN.");
-  };
-
-  return (
-    <div style={{ minHeight: "100vh" }}>
-      <div style={{ background: "#0E3B2E", padding: "20px 16px 12px" }}>
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
-          <div className="row between">
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: ".2em", fontWeight: 600, color: "#7FC8A4" }}>LOCAL EDUCATION BOARD</div>
-              <h1 style={{ fontSize: 24, color: "#fff", letterSpacing: "-0.01em" }}>Kharadar Register</h1>
-            </div>
-            <div className="row">
-              <div style={{ fontSize: 11, color: "#9DBBAE" }}>
-                {saveState === "saving" && "Saving…"}
-                {saveState === "saved" && "Saved ✓"}
-                {saveState === "error" && "Save failed"}
-              </div>
-              <button className="btn sm" style={{ background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.3)" }} onClick={refresh}>⟳</button>
-              {isAdmin ? (
-                <div className="row">
-                  <span className="badge" style={{ background: "#1E9E6A", color: "#fff" }}>ADMIN</span>
-                  <button onClick={() => { setIsAdmin(false); setTab("dashboard"); }} style={{ background: "none", border: "none", color: "#C6D8CE", fontSize: 12, fontWeight: 600, textDecoration: "underline", cursor: "pointer" }}>Log out</button>
-                </div>
-              ) : (
-                <button className="btn sm" style={{ background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.3)" }}
-                  onClick={() => { setShowLogin(!showLogin); setLoginError(""); setPinInput(""); }}>🔒 Admin login</button>
-              )}
-            </div>
-          </div>
-          {showLogin && !isAdmin && (
-            <div style={{ marginTop: 12, background: "#fff", borderRadius: 12, padding: 12, maxWidth: 400 }} className="row">
-              <input type="password" inputMode="numeric" autoFocus placeholder="Enter admin PIN" className="inp" style={{ flex: 1, width: "auto" }}
-                value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "").slice(0, 8)); setLoginError(""); }}
-                onKeyDown={(e) => e.key === "Enter" && tryLogin()} />
-              <button className="btn" onClick={tryLogin}>Unlock</button>
-              {loginError && <span style={{ color: "#A33222", fontSize: 12, fontWeight: 600 }}>{loginError}</span>}
-            </div>
-          )}
-          <div className="row" style={{ marginTop: 16, gap: 4, overflowX: "auto", flexWrap: "nowrap", paddingBottom: 2 }}>
-            {tabs.map((t) => (
-              <button key={t[0]} className="tabbtn" onClick={() => setTab(t[0])}
-                style={tab === t[0] ? { background: "#F3F4F1", color: "#0E3B2E" } : { background: "rgba(255,255,255,.08)", color: "#C6D8CE" }}>
-                {t[1]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px 60px" }}>
-        {tab === "dashboard" && <Dashboard data={data} go={setTab} isAdmin={isAdmin} exportData={exportData} importData={importData} />}
-        {tab === "programs" && <Programs data={data} update={update} isAdmin={isAdmin} />}
-        {isAdmin && tab === "prf" && <PRF data={data} update={update} />}
-        {isAdmin && tab === "fees" && <Fees data={data} update={update} />}
-        {isAdmin && tab === "staff" && <Staff data={data} update={update} />}
-        {isAdmin && tab === "reports" && <Reports data={data} />}
-        {isAdmin && tab === "whatsapp" && <WhatsApp data={data} update={update} />}
-      </div>
-    </div>
-  );
+  return COLS[feeState.sheet].map(c => Object.assign({}, c, { required:c.k === 'student_name' }));
 }
 
-/* ---------- Dashboard (no money figures anywhere) ---------- */
-function Dashboard({ data, go, isAdmin, exportData, importData }) {
-  const m = thisMonth();
-  const activePrograms = data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).length;
-  const pipeline = data.programs.filter((p) => ["Idea", "PRF Drafted", "Submitted to Council"].includes(p.status)).length;
-  const activeStudents = data.students.filter((s) => s.status === "Active");
-  const paidStudents = activeStudents.filter((s) => s.payments && s.payments[m]).length;
-  const paidStaff = data.staff.filter((s) => s.payments && s.payments[m]).length;
-  const pendingPrfs = data.prfs.filter((p) => p.status !== "Approved" && p.status !== "Rejected").length;
-
-  const stats = [
-    ["Active programs", activePrograms, "programs"],
-    ["In pipeline", pipeline, "programs"],
-    ["Students supported", activeStudents.length, isAdmin ? "fees" : "programs"],
-  ];
-  if (isAdmin) stats.push(["PRFs awaiting Council", pendingPrfs, "prf"], ["Paid staff & teachers", data.staff.length, "staff"]);
-
-  return (
-    <div>
-      {!isAdmin && (
-        <div style={{ marginBottom: 12, background: "#E3F2E9", color: "#166B45", fontSize: 12, padding: "8px 12px", borderRadius: 8 }}>
-          Viewer mode — editing and fee details are available after admin login.
-        </div>
-      )}
-      <div className="grid3">
-        {stats.map((s) => (
-          <div key={s[0]} className="card" style={{ cursor: "pointer" }} onClick={() => go(s[2])}>
-            <div style={{ fontSize: 26, fontWeight: 700, color: "#0E3B2E" }}>{s[1]}</div>
-            <div className="muted" style={{ fontWeight: 600, marginTop: 2 }}>{s[0]}</div>
-          </div>
-        ))}
-      </div>
-
-      {isAdmin && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{monthLabel(m)} — this month's progress</div>
-          <Progress label="Student fees disbursed" done={paidStudents} total={activeStudents.length} />
-          <Progress label="Staff salaries paid" done={paidStaff} total={data.staff.length} />
-          <div className="faint">Counts only — amounts are in Tuition Support, Staff, and Reports.</div>
-        </div>
-      )}
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Program pipeline</div>
-        {data.programs.length === 0 ? <Empty text="No programs yet." /> : (
-          data.programs.map((p) => (
-            <div key={p.id} className="row between" style={{ padding: "6px 0", borderBottom: "1px solid #EEF0EE" }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{p.name}</span>
-              <Badge text={p.status} colors={STATUS_COLORS[p.status]} />
-            </div>
-          ))
-        )}
-      </div>
-
-      {isAdmin && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Data backup</div>
-          <div className="row">
-            <button className="btn ghost sm" onClick={exportData}>⬇ Export data (.json)</button>
-            <label className="btn ghost sm" style={{ display: "inline-block" }}>
-              ⬆ Import data
-              <input type="file" accept=".json,application/json" style={{ display: "none" }}
-                onChange={(e) => { if (e.target.files[0]) importData(e.target.files[0]); e.target.value = ""; }} />
-            </label>
-          </div>
-          <div className="faint" style={{ marginTop: 8 }}>
-            Export gives you a backup file you can keep or send on WhatsApp. On another device, use Import to load it.
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function openImport(target){
+  IMPORT.target = target;
+  IMPORT.fields = importFields(target);
+  const where = target === 'students' ? 'the student register'
+    : 'the <b>' + esc(SHEETS[feeState.sheet].short) + '</b> sheet for ' + MONTHS[feeState.month-1] + ' ' + feeState.year;
+  openModal('Import from Excel',
+    '<p style="margin-top:0">Choose a workbook and pick out the columns you want. Rows land in ' + where + '.</p>'
+    + '<div class="field"><label for="imp-file">Excel file (.xlsx)</label>'
+    + '<input id="imp-file" type="file" accept=".xlsx,.xlsm" onchange="readImport(this)"></div>'
+    + '<div id="imp-body"></div>',
+    runImport, 'Import rows');
 }
 
-function Progress({ label, done, total }) {
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div className="row between muted" style={{ marginBottom: 4 }}>
-        <span>{label}</span><span style={{ fontWeight: 600 }}>{done}/{total}</span>
-      </div>
-      <div style={{ height: 8, borderRadius: 999, background: "#E4E7E4" }}>
-        <div style={{ height: 8, borderRadius: 999, width: pct + "%", background: "#1E9E6A", transition: "width .3s" }}></div>
-      </div>
-    </div>
-  );
+async function readImport(input){
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const body = $('imp-body');
+  body.innerHTML = '<p class="mini">Reading ' + esc(file.name) + '\u2026</p>';
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    IMPORT.book = wb;
+    IMPORT.sheets = wb.worksheets.map(w => w.name);
+    if (!IMPORT.sheets.length) throw new Error('This workbook has no worksheets.');
+    pickSheet(0);
+  }catch(err){
+    body.innerHTML = '<div class="note warn"><b>Could not read that file.</b><br>' + esc(err.message || err)
+      + '<br>If it is an older <code>.xls</code>, open it in Excel and save it as <code>.xlsx</code> first.</div>';
+  }
 }
 
-/* ---------- Programs ---------- */
-function Programs({ data, update, isAdmin }) {
-  const blank = { name: "", category: "", coordinator: "", budget: "", startDate: "", notes: "", status: "Idea" };
-  const [form, setForm] = useState(blank);
-  const [editId, setEditId] = useState(null);
-  const [showForm, setShowForm] = useState(false);
+function pickSheet(i){
+  IMPORT.wsIndex = +i;
+  IMPORT.grid = wsToGrid(IMPORT.book.worksheets[IMPORT.wsIndex]);
+  IMPORT.headerRow = detectHeaderRow(IMPORT.grid, IMPORT.fields.map(f => f.h));
+  drawImport();
+}
+function setHeaderRow(n){ IMPORT.headerRow = Math.max(0, (+n) - 1); drawImport(); }
 
-  const save = () => {
-    if (!form.name.trim()) return;
-    update((d) => {
-      if (editId) d.programs = d.programs.map((p) => (p.id === editId ? { ...p, ...form } : p));
-      else d.programs.push({ ...form, id: uid() });
-      return d;
+function drawImport(){
+  const grid = IMPORT.grid, hr = IMPORT.headerRow;
+  const header = grid[hr] || [];
+  const colOpts = i => '<option value="-1">\u2014 skip \u2014</option>' + header.map((h,ci) =>
+    '<option value="' + ci + '"' + (ci === i ? ' selected' : '') + '>' + esc(colLetter(ci) + (h ? ' \u00b7 ' + h : '')) + '</option>').join('');
+
+  let h = '<div class="grid g2">'
+    + '<div class="field"><label for="imp-sheet">Worksheet</label><select id="imp-sheet" onchange="pickSheet(this.value)">'
+    + IMPORT.sheets.map((n,i) => '<option value="' + i + '"' + (i === IMPORT.wsIndex ? ' selected' : '') + '>' + esc(n) + '</option>').join('')
+    + '</select></div>'
+    + '<div class="field"><label for="imp-hrow">Header row</label>'
+    + '<input id="imp-hrow" type="number" min="1" value="' + (hr+1) + '" onchange="setHeaderRow(this.value)">'
+    + '<p class="mini">Row ' + (hr+1) + ' reads: ' + esc(header.filter(Boolean).slice(0,6).join(' \u00b7 ') || '(blank)') + '</p></div></div>';
+
+  h += '<h4 class="serif" style="margin:14px 0 8px">Which column is which</h4>';
+  h += '<div class="grid g2">' + IMPORT.fields.map(f => {
+    const guess = guessColumn(header, f.h);
+    return '<div class="field"><label for="map-' + f.k + '">' + esc(f.h) + (f.required ? ' (required)' : '') + '</label>'
+      + '<select id="map-' + f.k + '" onchange="drawPreview()">' + colOpts(guess) + '</select></div>';
+  }).join('') + '</div>';
+
+  if (IMPORT.target === 'students')
+    h += '<label style="display:flex;gap:8px;align-items:center;color:var(--text)">'
+      + '<input type="checkbox" id="imp-skipdup" checked style="width:auto"> Skip names already in the register</label>';
+  else
+    h += '<label style="display:flex;gap:8px;align-items:center;color:var(--text)">'
+      + '<input type="checkbox" id="imp-replace" style="width:auto"> Replace the rows already on this sheet</label>';
+
+  h += '<div id="imp-preview"></div>';
+  $('imp-body').innerHTML = h;
+  drawPreview();
+}
+
+function collectImport(){
+  const map = {};
+  IMPORT.fields.forEach(f => { const el = $('map-' + f.k); map[f.k] = el ? +el.value : -1; });
+  const nameKey = IMPORT.target === 'students' ? 'full_name' : 'student_name';
+  const rows = [];
+  for (let i = IMPORT.headerRow + 1; i < IMPORT.grid.length; i++){
+    const r = IMPORT.grid[i] || [];
+    const name = map[nameKey] >= 0 ? (r[map[nameKey]] || '').trim() : '';
+    if (!name) continue;
+    if (/^(total|grand total|sub total)$/i.test(name)) continue;
+    const out = {};
+    IMPORT.fields.forEach(f => {
+      const ci = map[f.k];
+      if (ci < 0) return;
+      const raw = (r[ci] || '').trim();
+      out[f.k] = f.type === 'number' ? toNum(raw) : raw;
     });
-    setForm(blank); setEditId(null); setShowForm(false);
-  };
-
-  return (
-    <div>
-      <div className="row between" style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: 18 }}>Programs & Activities</h2>
-        {isAdmin && <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add program"}</button>}
-      </div>
-
-      {showForm && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="grid2">
-            <Field label="PROGRAM NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Board Exam Prep 2026" /></Field>
-            <Field label="CATEGORY"><input className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Education / Skills / Event" /></Field>
-            <Field label="COORDINATOR"><input className="inp" value={form.coordinator} onChange={(e) => setForm({ ...form, coordinator: e.target.value })} /></Field>
-            <Field label="ESTIMATED BUDGET (RS)"><input type="number" className="inp" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></Field>
-            <Field label="PLANNED START DATE"><input type="date" className="inp" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} /></Field>
-            <Field label="STATUS">
-              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                {PROGRAM_STATUSES.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </Field>
-          </div>
-          <Field label="NOTES"><textarea rows="2" className="inp" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add program"}</button>
-        </div>
-      )}
-
-      {data.programs.length === 0 && !showForm ? <div className="card"><Empty text="No programs yet. Add the programs you run and the ones in the pipeline." /></div> : (
-        data.programs.map((p) => (
-          <div className="card" key={p.id} style={{ marginBottom: 12 }}>
-            <div className="row between">
-              <div>
-                <div style={{ fontWeight: 700 }}>{p.name}</div>
-                <div className="muted" style={{ marginTop: 2 }}>
-                  {[p.category, p.coordinator && "Coordinator: " + p.coordinator, isAdmin && p.budget && fmtMoney(p.budget), p.startDate && "Starts " + p.startDate].filter(Boolean).join(" · ")}
-                </div>
-                {p.notes && <div className="faint" style={{ marginTop: 4 }}>{p.notes}</div>}
-              </div>
-              {isAdmin ? (
-                <select value={p.status}
-                  onChange={(e) => update((d) => { d.programs = d.programs.map((x) => x.id === p.id ? { ...x, status: e.target.value } : x); return d; })}
-                  className="badge" style={{ background: STATUS_COLORS[p.status].bg, color: STATUS_COLORS[p.status].fg, border: "none", cursor: "pointer" }}>
-                  {PROGRAM_STATUSES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              ) : <Badge text={p.status} colors={STATUS_COLORS[p.status]} />}
-            </div>
-            <div className="row" style={{ gap: 4, marginTop: 12, flexWrap: "nowrap" }}>
-              {PROGRAM_STATUSES.map((s, i) => (
-                <div key={s} title={s} style={{ height: 6, flex: 1, borderRadius: 999, background: PROGRAM_STATUSES.indexOf(p.status) >= i ? "#1E9E6A" : "#E4E7E4" }}></div>
-              ))}
-            </div>
-            {isAdmin && (
-              <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn ghost sm" onClick={() => { setForm({ ...p }); setEditId(p.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>
-                <button className="btn danger sm" onClick={() => { if (confirm('Delete program "' + p.name + '"?')) update((d) => { d.programs = d.programs.filter((x) => x.id !== p.id); return d; }); }}>Delete</button>
-              </div>
-            )}
-          </div>
-        ))
-      )}
-    </div>
-  );
+    rows.push(out);
+  }
+  return rows;
 }
 
-/* ---------- PRF ---------- */
-function PRF({ data, update }) {
-  const blank = { programName: "", purpose: "", details: "", venue: "", duration: "", participants: "", budgetBreakdown: "", resources: "", requestedBy: "", date: new Date().toISOString().slice(0, 10) };
-  const [form, setForm] = useState(blank);
-  const [preview, setPreview] = useState(null);
-
-  const buildText = (f) =>
-"LOCAL EDUCATION BOARD — KHARADAR\nPROGRAM REQUEST FORM (PRF)\nDate: " + f.date +
-"\n\n1. PROGRAM / ACTIVITY NAME\n" + f.programName +
-"\n\n2. PURPOSE & OBJECTIVES\n" + f.purpose +
-"\n\n3. DETAILS OF THE ACTIVITY\n" + f.details +
-"\n\n4. VENUE\n" + f.venue +
-"\n\n5. DURATION / SCHEDULE\n" + f.duration +
-"\n\n6. EXPECTED PARTICIPANTS\n" + f.participants +
-"\n\n7. BUDGET BREAKDOWN\n" + f.budgetBreakdown +
-"\n\n8. RESOURCES / SUPPORT REQUIRED\n" + f.resources +
-"\n\nRequested by: " + f.requestedBy +
-"\nSubmitted for the kind approval of the Council.";
-
-  const savePrf = () => {
-    if (!form.programName.trim()) return;
-    const text = buildText(form);
-    update((d) => { d.prfs.push({ id: uid(), ...form, text, status: "Draft" }); return d; });
-    setPreview(text); setForm(blank);
-  };
-
-  const prfStatuses = ["Draft", "Submitted to Council", "Approved", "Rejected"];
-  const prfColors = {
-    "Draft": { bg: "#EEF0EE", fg: "#5A6560" }, "Submitted to Council": { bg: "#FDEBD8", fg: "#9A5A16" },
-    "Approved": { bg: "#E3F2E9", fg: "#166B45" }, "Rejected": { bg: "#FBE3DF", fg: "#A33222" },
-  };
-
-  return (
-    <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr", alignItems: "start" }}>
-      <div className="card">
-        <h2 style={{ fontSize: 16, marginBottom: 12 }}>New PRF for Council approval</h2>
-        <Field label="PROGRAM / ACTIVITY NAME">
-          <input className="inp" list="progNames" value={form.programName} onChange={(e) => setForm({ ...form, programName: e.target.value })} />
-          <datalist id="progNames">{data.programs.map((p) => <option key={p.id} value={p.name} />)}</datalist>
-        </Field>
-        <Field label="PURPOSE & OBJECTIVES"><textarea rows="2" className="inp" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} /></Field>
-        <Field label="DETAILS OF THE ACTIVITY"><textarea rows="3" className="inp" value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} /></Field>
-        <div className="grid2">
-          <Field label="VENUE"><input className="inp" value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} /></Field>
-          <Field label="DURATION / SCHEDULE"><input className="inp" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="e.g. 6 weeks, Mon–Fri 4–6pm" /></Field>
-          <Field label="EXPECTED PARTICIPANTS"><input className="inp" value={form.participants} onChange={(e) => setForm({ ...form, participants: e.target.value })} /></Field>
-          <Field label="REQUESTED BY"><input className="inp" value={form.requestedBy} onChange={(e) => setForm({ ...form, requestedBy: e.target.value })} /></Field>
-        </div>
-        <Field label="BUDGET BREAKDOWN"><textarea rows="3" className="inp" value={form.budgetBreakdown} onChange={(e) => setForm({ ...form, budgetBreakdown: e.target.value })} placeholder={"Teacher honorarium: Rs 15,000\nMaterials: Rs 5,000\nTotal: Rs 20,000"} /></Field>
-        <Field label="RESOURCES / SUPPORT REQUIRED"><textarea rows="2" className="inp" value={form.resources} onChange={(e) => setForm({ ...form, resources: e.target.value })} /></Field>
-        <button className="btn" onClick={savePrf}>Generate PRF</button>
-      </div>
-
-      {preview && (
-        <div className="card">
-          <div className="row between" style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Generated PRF — ready to submit</div>
-            <CopyBtn text={preview} />
-          </div>
-          <div className="mono">{preview}</div>
-        </div>
-      )}
-
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>PRF tracker</div>
-        {data.prfs.length === 0 ? <Empty text="No PRFs yet. Fill the form to generate your first one." /> : (
-          data.prfs.map((p) => (
-            <div key={p.id} className="row between" style={{ padding: "6px 0", borderBottom: "1px solid #EEF0EE" }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{p.programName}</div>
-                <div className="faint">{p.date}</div>
-              </div>
-              <div className="row">
-                <CopyBtn text={p.text} />
-                <select value={p.status}
-                  onChange={(e) => update((d) => { d.prfs = d.prfs.map((x) => x.id === p.id ? { ...x, status: e.target.value } : x); return d; })}
-                  className="badge" style={{ background: prfColors[p.status].bg, color: prfColors[p.status].fg, border: "none", cursor: "pointer" }}>
-                  {prfStatuses.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+function drawPreview(){
+  const el = $('imp-preview'); if (!el) return;
+  const rows = collectImport();
+  if (!rows.length){
+    el.innerHTML = '<div class="note warn" style="margin:14px 0 0">Nothing to bring in yet. '
+      + 'Check the header row number and make sure the name column is mapped.</div>';
+    return;
+  }
+  const show = rows.slice(0,6);
+  el.innerHTML = '<h4 class="serif" style="margin:16px 0 8px">' + rows.length + ' row'
+    + (rows.length > 1 ? 's' : '') + ' ready</h4>'
+    + '<div class="scroll" style="border:1px solid var(--line)"><table class="ledger"><thead><tr>'
+    + IMPORT.fields.map(f => '<th>' + esc(f.h) + '</th>').join('') + '</tr></thead><tbody>'
+    + show.map(r => '<tr>' + IMPORT.fields.map(f => '<td>' + esc(r[f.k] ?? '') + '</td>').join('') + '</tr>').join('')
+    + '</tbody></table></div>'
+    + (rows.length > show.length ? '<p class="mini">\u2026and ' + (rows.length - show.length) + ' more.</p>' : '');
 }
 
-/* ---------- Tuition Support: 3 fee types + monthly WhatsApp data ---------- */
-function Fees({ data, update }) {
-  const [feeTab, setFeeTab] = useState("tuition");
-  const m = thisMonth();
-  const [msgMonth, setMsgMonth] = useState(m);
-  const blank = { name: "", type: "tuition", lebAmount: "", parentAmount: "", teacher: "", amount: "", statement: "", status: "Active" };
-  const [form, setForm] = useState(blank);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState(null);
+async function runImport(){
+  const rows = collectImport();
+  if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
 
-  const list = data.students.filter((s) => (s.type || "tuition") === feeTab);
-  const activeAll = data.students.filter((s) => s.status === "Active");
-  const monthlyTotal = activeAll.reduce((a, s) => a + lebCost(s), 0);
-
-  const save = () => {
-    if (!form.name.trim()) return;
-    const rec = { ...form, type: feeTab };
-    update((d) => {
-      if (editId) d.students = d.students.map((s) => (s.id === editId ? { ...s, ...rec } : s));
-      else d.students.push({ ...rec, id: uid(), payments: {} });
-      return d;
-    });
-    setForm(blank); setEditId(null); setShowForm(false);
-  };
-
-  const togglePaid = (id) =>
-    update((d) => {
-      d.students = d.students.map((s) => {
-        if (s.id !== id) return s;
-        const payments = Object.assign({}, s.payments || {});
-        if (payments[m]) delete payments[m]; else payments[m] = true;
-        return { ...s, payments };
+  if (IMPORT.target === 'students'){
+    const existing = (await db.list('students')).map(s => normHead(s.full_name));
+    const skipDup = $('imp-skipdup') && $('imp-skipdup').checked;
+    let added = 0, skipped = 0;
+    for (const r of rows){
+      if (skipDup && existing.indexOf(normHead(r.full_name)) >= 0){ skipped++; continue; }
+      await db.insert('students', {
+        full_name:r.full_name, guardian_name:r.guardian_name || '', institution:r.institution || '',
+        class_year:r.class_year || '', contact:r.contact || '', category:'school', status:'active', notes:''
       });
-      return d;
-    });
+      existing.push(normHead(r.full_name)); added++;
+    }
+    closeModal();
+    toast(added + ' student' + (added === 1 ? '' : 's') + ' added' + (skipped ? ', ' + skipped + ' already there' : ''));
+    render(); return;
+  }
 
-  /* monthly WhatsApp fee data message */
-  const feeMessage = useMemo(() => {
-    const act = (type) => data.students.filter((s) => (s.type || "tuition") === type && s.status === "Active");
-    let t = "*LEB KHARADAR — MONTHLY FEE DATA*\n_" + monthLabel(msgMonth) + "_\n";
-    let grand = 0;
-
-    const tu = act("tuition");
-    t += "\n*1. TUITION FEES*\n";
-    if (tu.length === 0) t += "—\n";
-    tu.forEach((s, i) => {
-      t += (i + 1) + ". " + s.name + " — LEB: " + fmtMoney(s.lebAmount) + " | Parent: " + fmtMoney(s.parentAmount) + " | Teacher: " + (s.teacher || "-") + "\n";
-    });
-    const tuTotal = tu.reduce((a, s) => a + (Number(s.lebAmount) || 0), 0);
-    grand += tuTotal;
-    if (tu.length) t += "_LEB total: " + fmtMoney(tuTotal) + "_\n";
-
-    const pp = act("pps");
-    t += "\n*2. PAK PROGRESSIVE SCHOOL — AFGHAN STUDENT FEES*\n";
-    if (pp.length === 0) t += "—\n";
-    pp.forEach((s, i) => { t += (i + 1) + ". " + s.name + " — " + fmtMoney(s.amount) + "\n"; });
-    const ppTotal = pp.reduce((a, s) => a + (Number(s.amount) || 0), 0);
-    grand += ppTotal;
-    if (pp.length) t += "_Total: " + fmtMoney(ppTotal) + "_\n";
-
-    const un = act("uni");
-    t += "\n*3. UNIVERSITY & OTHER*\n";
-    if (un.length === 0) t += "—\n";
-    un.forEach((s, i) => { t += (i + 1) + ". " + s.name + " — " + fmtMoney(s.amount) + (s.statement ? " — " + s.statement : "") + "\n"; });
-    const unTotal = un.reduce((a, s) => a + (Number(s.amount) || 0), 0);
-    grand += unTotal;
-    if (un.length) t += "_Total: " + fmtMoney(unTotal) + "_\n";
-
-    t += "\n*GRAND TOTAL (LEB): " + fmtMoney(grand) + "*\n\nLocal Education Board — Kharadar";
-    return t;
-  }, [data.students, msgMonth]);
-
-  return (
-    <div>
-      <div className="row between" style={{ marginBottom: 4 }}>
-        <div>
-          <h2 style={{ fontSize: 18 }}>Tuition Fee Support</h2>
-          <div className="muted">{activeAll.length} active students · LEB pays {fmtMoney(monthlyTotal)}/month · Marking payments for {monthLabel(m)}</div>
-        </div>
-        <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add student"}</button>
-      </div>
-
-      <div className="row" style={{ margin: "12px 0" }}>
-        {FEE_TYPES.map((ft) => (
-          <button key={ft.key} className="subtab" onClick={() => { setFeeTab(ft.key); setShowForm(false); setEditId(null); }}
-            style={feeTab === ft.key ? { background: "#0E3B2E", color: "#fff" } : { background: "#E4E7E4", color: "#5A6560" }}>
-            {ft.label} ({data.students.filter((s) => (s.type || "tuition") === ft.key).length})
-          </button>
-        ))}
-      </div>
-
-      {showForm && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#0E3B2E" }}>{editId ? "Edit student" : "New student"} — {FEE_TYPE_NAMES[feeTab]}</div>
-          <div className="grid2">
-            <Field label="STUDENT NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-            {feeTab === "tuition" && (<React.Fragment>
-              <Field label="TUITION TEACHER NAME"><input className="inp" value={form.teacher} onChange={(e) => setForm({ ...form, teacher: e.target.value })} /></Field>
-              <Field label="LEB CONTRIBUTION (RS / MONTH)"><input type="number" className="inp" value={form.lebAmount} onChange={(e) => setForm({ ...form, lebAmount: e.target.value })} /></Field>
-              <Field label="PARENT CONTRIBUTION (RS / MONTH)"><input type="number" className="inp" value={form.parentAmount} onChange={(e) => setForm({ ...form, parentAmount: e.target.value })} /></Field>
-            </React.Fragment>)}
-            {feeTab === "pps" && (
-              <Field label="AMOUNT (RS / MONTH)"><input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-            )}
-            {feeTab === "uni" && (<React.Fragment>
-              <Field label="AMOUNT (RS / MONTH)"><input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-              <Field label="STATEMENT"><input className="inp" value={form.statement} onChange={(e) => setForm({ ...form, statement: e.target.value })} placeholder="e.g. BSc semester fee, NED University" /></Field>
-            </React.Fragment>)}
-            <Field label="STATUS">
-              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option>Active</option><option>Under review</option><option>Stopped</option>
-              </select>
-            </Field>
-          </div>
-          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add student"}</button>
-        </div>
-      )}
-
-      {list.length === 0 && !showForm ? <div className="card" style={{ marginBottom: 16 }}><Empty text={"No students in " + FEE_TYPE_NAMES[feeTab] + " yet."} /></div> : (
-        list.map((s) => (
-          <div className="card" key={s.id} style={{ marginBottom: 8 }}>
-            <div className="row between">
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name} {s.status !== "Active" && <span className="badge" style={{ background: "#EEF0EE", color: "#5A6560", marginLeft: 6 }}>{s.status}</span>}</div>
-                <div className="muted" style={{ marginTop: 2 }}>
-                  {feeTab === "tuition" && ["LEB: " + fmtMoney(s.lebAmount), "Parent: " + fmtMoney(s.parentAmount), s.teacher && ("Teacher: " + s.teacher)].filter(Boolean).join(" · ")}
-                  {feeTab === "pps" && fmtMoney(s.amount) + "/month"}
-                  {feeTab === "uni" && [fmtMoney(s.amount), s.statement].filter(Boolean).join(" · ")}
-                </div>
-              </div>
-              <div className="row">
-                {s.status === "Active" && (
-                  <button className={"paychip " + (s.payments && s.payments[m] ? "on" : "off")} onClick={() => togglePaid(s.id)}>
-                    {s.payments && s.payments[m] ? "Paid ✓" : "Mark paid"}
-                  </button>
-                )}
-                <button className="btn ghost sm" onClick={() => { setForm({ ...blank, ...s }); setEditId(s.id); setShowForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>
-                <button className="btn danger sm" onClick={() => { if (confirm("Remove " + s.name + "?")) update((d) => { d.students = d.students.filter((x) => x.id !== s.id); return d; }); }}>✕</button>
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="row between" style={{ marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Monthly fee data — WhatsApp message</div>
-          <div className="row">
-            <input type="month" className="inp" style={{ width: "auto" }} value={msgMonth} onChange={(e) => setMsgMonth(e.target.value)} />
-            <CopyBtn text={feeMessage} label="Copy message" />
-          </div>
-        </div>
-        <div className="mono">{feeMessage}</div>
-        <div className="faint" style={{ marginTop: 8 }}>Includes all Active students in the three categories. Copy and paste directly into WhatsApp — *bold* and _italic_ will format automatically.</div>
-      </div>
-    </div>
-  );
+  const sheet = feeState.sheet;
+  if ($('imp-replace') && $('imp-replace').checked){
+    for (const e of feeState.entries.filter(x => x.sheet === sheet)) await db.remove('fee_entries', e.id);
+    feeState.entries = feeState.entries.filter(x => x.sheet !== sheet);
+  }
+  let n = feeState.entries.filter(e => e.sheet === sheet).length;
+  for (const r of rows){
+    await db.insert('fee_entries', Object.assign({ cycle_id:feeState.cycle.id, sheet:sheet, serial_no:++n }, r));
+  }
+  closeModal();
+  toast(rows.length + ' row' + (rows.length === 1 ? '' : 's') + ' imported');
+  render();
 }
 
-/* ---------- Staff ---------- */
-function Staff({ data, update }) {
-  const blank = { name: "", role: "", program: "", salary: "" };
-  const [form, setForm] = useState(blank);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const m = thisMonth();
-  const payroll = data.staff.reduce((a, s) => a + (Number(s.salary) || 0), 0);
-
-  const save = () => {
-    if (!form.name.trim()) return;
-    update((d) => {
-      if (editId) d.staff = d.staff.map((s) => (s.id === editId ? { ...s, ...form } : s));
-      else d.staff.push({ ...form, id: uid(), payments: {} });
-      return d;
+/* =====================================================================
+   Student register
+   ===================================================================== */
+async function pageStudents(v){
+  const rows = (await db.list('students')).sort((a,b) => a.full_name.localeCompare(b.full_name));
+  let h = head('Student register', 'The people the board supports. Adding a student here means you never retype a name onto a fee sheet.',
+    '<button class="btn ghost" onclick="openImport(\'students\')">Import from Excel</button>'
+    + '<button class="btn" onclick="editStudent()">Add student</button>');
+  h += '<div class="panel"><div class="body flush">';
+  if (!rows.length){
+    h += '<div class="empty"><p>No students yet.</p><button class="btn" onclick="editStudent()">Add the first student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'students\')">Import from Excel</button></div>';
+  } else {
+    h += '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th><th>Name</th><th>Guardian</th>'
+      + '<th>Institution</th><th>Class / year</th><th>Category</th><th>Contact</th><th></th></tr></thead><tbody>'
+      + rows.map((s,i) => '<tr><td class="sn">' + (i+1) + '</td><td>' + esc(s.full_name) + '</td>'
+        + '<td>' + esc(s.guardian_name || '—') + '</td><td>' + esc(s.institution || '—') + '</td>'
+        + '<td>' + esc(s.class_year || '—') + '</td><td>' + esc(s.category) + '</td>'
+        + '<td>' + esc(s.contact || '—') + '</td>'
+        + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editStudent(\'' + s.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delRow(\'students\',\'' + s.id + '\')">&times;</button></td></tr>').join('')
+      + '</tbody></table></div>';
+  }
+  h += '</div></div>'; v.innerHTML = h;
+}
+async function editStudent(id){
+  const s = id ? (await db.list('students')).find(x => x.id === id) : {};
+  openModal(id ? 'Edit student' : 'Add student',
+    '<div class="grid g2">'
+    + fld('s-name','Full name', s.full_name) + fld('s-guard','Guardian name', s.guardian_name)
+    + fld('s-inst','Institution', s.institution) + fld('s-class','Class / year', s.class_year)
+    + sel('s-cat','Category', ['school','tuition','university','other'], s.category)
+    + fld('s-contact','Contact', s.contact) + '</div>'
+    + fld('s-notes','Notes', s.notes, 'textarea'),
+    async () => {
+      if (!mv('s-name')){ toast('A name is required'); return; }
+      const row = { full_name:mv('s-name'), guardian_name:mv('s-guard'), institution:mv('s-inst'),
+        class_year:mv('s-class'), category:mv('s-cat'), contact:mv('s-contact'), notes:mv('s-notes') };
+      id ? await db.update('students', id, row) : await db.insert('students', row);
+      closeModal(); toast('Saved'); render();
     });
-    setForm(blank); setEditId(null); setShowForm(false);
-  };
+}
+function fld(id, label, val, type){
+  if (type === 'textarea') return '<div class="field"><label for="' + id + '">' + esc(label) + '</label><textarea id="' + id + '">' + esc(val || '') + '</textarea></div>';
+  return '<div class="field"><label for="' + id + '">' + esc(label) + '</label><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(val || '') + '"></div>';
+}
+function sel(id, label, opts, val){
+  return '<div class="field"><label for="' + id + '">' + esc(label) + '</label><select id="' + id + '">'
+    + opts.map(o => { const [value, text] = Array.isArray(o) ? o : [o,o];
+      return '<option value="' + esc(value) + '"' + (String(val) === String(value) ? ' selected' : '') + '>' + esc(text) + '</option>'; }).join('')
+    + '</select></div>';
+}
+async function delRow(table, id){
+  if (!confirm('Remove this record? This cannot be undone.')) return;
+  await db.remove(table, id); toast('Removed'); render();
+}
 
-  const togglePaid = (id) =>
-    update((d) => {
-      d.staff = d.staff.map((s) => {
-        if (s.id !== id) return s;
-        const payments = Object.assign({}, s.payments || {});
-        if (payments[m]) delete payments[m]; else payments[m] = true;
-        return { ...s, payments };
+/* =====================================================================
+   Tuesday cases
+   ===================================================================== */
+async function pageCases(v){
+  const rows = (await db.list('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
+  const byDate = {};
+  rows.forEach(c => { (byDate[c.meeting_date] = byDate[c.meeting_date] || []).push(c); });
+
+  let h = head('Tuesday cases', 'What was heard, what the board recommended, and what the parent body said back.',
+    '<button class="btn ghost" onclick="exportCases()">Download minutes</button>'
+    + '<button class="btn" onclick="editCase()">Log a case</button>');
+
+  if (!rows.length){
+    h += '<div class="panel"><div class="empty"><p>No cases logged yet.</p><button class="btn" onclick="editCase()">Log the first case</button></div></div>';
+    v.innerHTML = h; return;
+  }
+  for (const d of Object.keys(byDate)){
+    const list = byDate[d];
+    const asked = list.reduce((s,c) => s + num(c.amount_requested), 0);
+    h += '<div class="panel"><h2>' + fmtDate(d) + '<span class="mini">' + list.length + ' case' + (list.length>1?'s':'')
+      + (asked ? ' · Rs ' + money(asked) + ' requested' : '') + '</span></h2><div class="body flush"><div class="scroll">'
+      + '<table class="ledger"><thead><tr><th class="sn">#</th><th>Applicant</th><th>For</th><th>Request</th>'
+      + '<th class="num">Amount</th><th>Board recommendation</th><th>Decision</th><th></th></tr></thead><tbody>'
+      + list.map((c,i) => '<tr><td class="sn">' + esc(c.case_no || (i+1)) + '</td>'
+        + '<td>' + esc(c.applicant_name) + (c.contact ? '<div class="mini">' + esc(c.contact) + '</div>' : '') + '</td>'
+        + '<td>' + esc(c.student_name || '—') + '<div class="mini">' + esc(c.category.replace('_',' ')) + '</div></td>'
+        + '<td style="max-width:280px">' + esc(c.request_summary || '—') + '</td>'
+        + '<td class="num">' + (num(c.amount_requested) ? money(c.amount_requested) : '—') + '</td>'
+        + '<td style="max-width:240px">' + esc(c.board_recommendation || '—') + '</td>'
+        + '<td>' + decisionTag(c.decision) + (c.forwarded_on ? '<div class="mini">sent ' + fmtDate(c.forwarded_on) + '</div>' : '') + '</td>'
+        + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editCase(\'' + c.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delRow(\'cases\',\'' + c.id + '\')">&times;</button></td></tr>').join('')
+      + '</tbody></table></div></div></div>';
+  }
+  v.innerHTML = h;
+}
+async function editCase(id){
+  const c = id ? (await db.list('cases')).find(x => x.id === id) : { meeting_date:lastTuesday(), decision:'pending', category:'school_fee' };
+  openModal(id ? 'Edit case' : 'Log a case',
+    '<div class="grid g3">' + fld('c-date','Meeting date', c.meeting_date, 'date') + fld('c-no','Case no.', c.case_no)
+    + sel('c-cat','Category', [['school_fee','School fee'],['tuition','Tuition'],['university','University / other'],['other','Other']], c.category) + '</div>'
+    + '<div class="grid g3">' + fld('c-appl','Applicant name', c.applicant_name) + fld('c-contact','Contact', c.contact)
+    + fld('c-student','Student concerned', c.student_name) + '</div>'
+    + fld('c-req','What was requested', c.request_summary, 'textarea')
+    + '<div class="grid g3">' + fld('c-amt','Amount requested (Rs)', c.amount_requested, 'number')
+    + sel('c-dec','Decision', [['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['deferred','Deferred'],['forwarded','Forwarded to parent body']], c.decision)
+    + fld('c-fwd','Forwarded on', c.forwarded_on, 'date') + '</div>'
+    + fld('c-rec','Board recommendation', c.board_recommendation, 'textarea')
+    + fld('c-resp','Parent body response', c.parent_body_response, 'textarea'),
+    async () => {
+      if (!mv('c-appl')){ toast('An applicant name is required'); return; }
+      const row = { meeting_date:mv('c-date') || todayISO(), case_no:mv('c-no'), category:mv('c-cat'),
+        applicant_name:mv('c-appl'), contact:mv('c-contact'), student_name:mv('c-student'),
+        request_summary:mv('c-req'), amount_requested:num(mv('c-amt')), decision:mv('c-dec'),
+        forwarded_on:mv('c-fwd') || null, board_recommendation:mv('c-rec'), parent_body_response:mv('c-resp') };
+      id ? await db.update('cases', id, row) : await db.insert('cases', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+function lastTuesday(){
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() - 2 + 7) % 7));
+  return d.toISOString().slice(0,10);
+}
+
+/* =====================================================================
+   Word output — real .docx via the docx library, with an HTML fallback
+   ===================================================================== */
+function labelled(label, value){
+  return new docx.Paragraph({ spacing:{ after:120 }, children:[
+    new docx.TextRun({ text:label + ' ', bold:true }),
+    new docx.TextRun({ text:String(value ?? '') })
+  ]});
+}
+function heading(text, size){
+  return new docx.Paragraph({ spacing:{ before:220, after:110 },
+    children:[ new docx.TextRun({ text:text, bold:true, size:(size || 24) }) ] });
+}
+function para(text, opts){
+  return new docx.Paragraph({ spacing:{ after:110 }, alignment:(opts && opts.center) ? docx.AlignmentType.CENTER : undefined,
+    children:[ new docx.TextRun({ text:String(text ?? ''), bold:!!(opts && opts.bold), size:(opts && opts.size) || 22 }) ] });
+}
+function tcell(text, bold){
+  return new docx.TableCell({ margins:{ top:60, bottom:60, left:100, right:100 },
+    children:[ new docx.Paragraph({ children:[ new docx.TextRun({ text:String(text ?? ''), bold:!!bold, size:20 }) ] }) ] });
+}
+function simpleTable(rows){
+  return new docx.Table({
+    width:{ size:100, type:docx.WidthType.PERCENTAGE },
+    rows: rows.map((r,i) => new docx.TableRow({ children: r.map(c => tcell(c, i === 0 || i === rows.length-1)) }))
+  });
+}
+async function saveDocx(children, filename, htmlFallback){
+  try{
+    if (typeof docx === 'undefined') throw new Error('library not loaded');
+    const doc = new docx.Document({ sections:[{ properties:{}, children:children() }] });
+    const blob = await docx.Packer.toBlob(doc);
+    download(blob, filename);
+  }catch(err){
+    console.warn('docx builder failed, using Word-HTML fallback', err);
+    const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">'
+      + '<head><meta charset="utf-8"><style>body{font-family:Calibri,sans-serif;font-size:11pt}'
+      + 'table{border-collapse:collapse;width:100%}td,th{border:1px solid #444;padding:5px}</style></head><body>'
+      + htmlFallback() + '</body></html>';
+    download(new Blob(['\ufeff' + html], { type:'application/msword' }), filename.replace(/\.docx$/, '.doc'));
+  }
+  toast('Word file downloaded');
+}
+
+/* =====================================================================
+   Programmes
+   ===================================================================== */
+async function pagePrograms(v){
+  const rows = (await db.list('programs')).sort((a,b) => (b.start_date||'').localeCompare(a.start_date||''));
+  let h = head('Programmes', 'Courses, events and activities — both the ones you plan and the ones handed down by the parent body.',
+    '<button class="btn" onclick="editProgram()">Add programme</button>');
+  h += '<div class="panel"><div class="body flush">';
+  if (!rows.length){
+    h += '<div class="empty"><p>Nothing here yet.</p><button class="btn" onclick="editProgram()">Add the first programme</button></div>';
+  } else {
+    h += '<div class="scroll"><table class="ledger"><thead><tr><th>Programme</th><th>Type</th><th>Origin</th>'
+      + '<th>Dates</th><th>Venue</th><th>Permission</th><th>Status</th><th></th></tr></thead><tbody>'
+      + rows.map(p => {
+        let prfCell = '<span class="tag t-grey">Not needed</span>';
+        if (p.requires_prf){
+          const d = p.start_date ? daysBetween(todayISO(), p.start_date) : null;
+          prfCell = (d !== null && d < 15 && p.status !== 'approved')
+            ? '<span class="tag t-red">' + (d < 0 ? 'Date passed' : d + ' days left') + '</span>'
+            : '<span class="tag t-gold">PRF required</span>';
+          prfCell += ' <button class="btn sm ghost" onclick="editPRF(null,\'' + p.id + '\')">Draft</button>';
+        }
+        return '<tr><td>' + esc(p.title) + (p.collaboration ? '<div class="mini">with ' + esc(p.collaboration) + '</div>' : '') + '</td>'
+        + '<td>' + esc(p.type) + '</td><td>' + (p.source === 'parent_body' ? 'Parent body' : 'LEB') + '</td>'
+        + '<td>' + fmtDate(p.start_date) + (p.end_date ? '<div class="mini">to ' + fmtDate(p.end_date) + '</div>' : '') + '</td>'
+        + '<td>' + esc(p.venue || '—') + '</td><td>' + prfCell + '</td><td>' + statusTag(p.status) + '</td>'
+        + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editProgram(\'' + p.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delRow(\'programs\',\'' + p.id + '\')">&times;</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  h += '</div></div>'; v.innerHTML = h;
+}
+async function editProgram(id){
+  const p = id ? (await db.list('programs')).find(x => x.id === id) : { type:'program', source:'leb', status:'planned', requires_prf:true };
+  openModal(id ? 'Edit programme' : 'Add programme',
+    fld('p-title','Programme title', p.title)
+    + '<div class="grid g3">'
+    + sel('p-type','Type', [['program','Programme'],['course','Course'],['event','Event'],['activity','Activity']], p.type)
+    + sel('p-source','Where it came from', [['leb','Our own initiative'],['parent_body','Given by parent body']], p.source)
+    + sel('p-status','Status', [['planned','Planned'],['prf_pending','Awaiting permission'],['approved','Approved'],['ongoing','Ongoing'],['completed','Completed'],['cancelled','Cancelled']], p.status)
+    + '</div><div class="grid g3">'
+    + fld('p-start','Start date', p.start_date, 'date') + fld('p-end','End date', p.end_date, 'date')
+    + sel('p-prf','Permission form', [['yes','Required'],['no','Not required']], p.requires_prf === false ? 'no' : 'yes')
+    + '</div><div class="grid g2">'
+    + fld('p-venue','Venue', p.venue) + fld('p-collab','In collaboration with', p.collaboration)
+    + fld('p-target','Target group', p.target_group) + fld('p-part','Expected participants', p.expected_participants)
+    + '</div>' + fld('p-desc','Brief description', p.description, 'textarea'),
+    async () => {
+      if (!mv('p-title')){ toast('A title is required'); return; }
+      const row = { title:mv('p-title'), type:mv('p-type'), source:mv('p-source'), status:mv('p-status'),
+        start_date:mv('p-start') || null, end_date:mv('p-end') || null, venue:mv('p-venue'),
+        collaboration:mv('p-collab'), target_group:mv('p-target'), expected_participants:mv('p-part'),
+        description:mv('p-desc'), requires_prf: mv('p-prf') === 'yes' };
+      id ? await db.update('programs', id, row) : await db.insert('programs', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+/* =====================================================================
+   Permission forms (PRF)
+   ===================================================================== */
+async function pagePRF(v){
+  const [rows, programs] = await Promise.all([db.list('prf_requests'), db.list('programs')]);
+  rows.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
+  let h = head('Permission forms', 'Fill the details once. The board template is generated for you, and the 15-day rule is checked before you send it.',
+    '<button class="btn" onclick="editPRF()">New permission form</button>');
+  h += '<div class="note">Council rule: a permission form must reach the parent body <b>15 days before</b> the programme date. '
+     + 'Programmes handed down by the parent body usually do not need one.</div>';
+  h += '<div class="panel"><div class="body flush">';
+  if (!rows.length){
+    h += '<div class="empty"><p>No permission forms drafted.</p><button class="btn" onclick="editPRF()">Start one</button></div>';
+  } else {
+    h += '<div class="scroll"><table class="ledger"><thead><tr><th>Programme</th><th>Programme date</th>'
+      + '<th>Lead time</th><th>In charge</th><th>Status</th><th></th></tr></thead><tbody>'
+      + rows.map(p => {
+        const lead = p.event_date ? daysBetween(p.submitted_on || todayISO(), p.event_date) : null;
+        let leadCell = '<span class="mini">no date set</span>';
+        if (lead !== null){
+          const cls = lead >= 15 ? 't-green' : (lead < 0 ? 't-red' : 't-gold');
+          leadCell = '<span class="tag ' + cls + '">' + (lead < 0 ? Math.abs(lead) + ' days past' : lead + ' days') + '</span>';
+        }
+        return '<tr><td>' + esc(p.program_name) + '<div class="mini">' + esc(p.venue || '') + '</div></td>'
+        + '<td>' + esc(p.program_date || fmtDate(p.event_date)) + '</td><td>' + leadCell + '</td>'
+        + '<td>' + esc(p.incharge_name || '—') + '</td><td>' + statusTag(p.status) + '</td>'
+        + '<td style="width:1%;white-space:nowrap">'
+        + '<button class="btn sm gold" onclick="exportPRF(\'' + p.id + '\')">Word</button> '
+        + '<button class="btn sm ghost" onclick="editPRF(\'' + p.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delRow(\'prf_requests\',\'' + p.id + '\')">&times;</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  h += '</div></div>'; v.innerHTML = h;
+}
+
+function repeatRows(kind, items, aLabel, bLabel){
+  const list = (items && items.length) ? items : [{ title:'', detail:'' }];
+  return '<div id="rep-' + kind + '">' + list.map((it,i) => repeatRow(kind, i, it, aLabel, bLabel)).join('') + '</div>'
+    + '<button class="btn sm ghost" onclick="addRepeat(\'' + kind + '\',\'' + aLabel + '\',\'' + bLabel + '\')">Add another</button>';
+}
+function repeatRow(kind, i, it, aLabel, bLabel){
+  return '<div class="repeat-row">'
+    + '<div><input placeholder="' + esc(aLabel) + '" class="' + kind + '-t" value="' + esc(it.title || '') + '"></div>'
+    + '<div><input placeholder="' + esc(bLabel) + '" class="' + kind + '-d" value="' + esc(it.detail || '') + '"></div>'
+    + '<button class="btn sm danger" onclick="this.parentElement.remove()">&times;</button></div>';
+}
+function addRepeat(kind, a, b){
+  const wrap = $('rep-' + kind);
+  wrap.insertAdjacentHTML('beforeend', repeatRow(kind, wrap.children.length, {}, a, b));
+}
+function collectRepeat(kind){
+  const t = [...document.querySelectorAll('.' + kind + '-t')], d = [...document.querySelectorAll('.' + kind + '-d')];
+  return t.map((el,i) => ({ title:el.value.trim(), detail:(d[i] ? d[i].value.trim() : '') }))
+          .filter(x => x.title || x.detail);
+}
+function budgetRows(items){
+  const list = (items && items.length) ? items : [{}];
+  return '<div id="rep-budget">' + list.map(b => budgetRow(b)).join('') + '</div>'
+    + '<button class="btn sm ghost" onclick="$(\'rep-budget\').insertAdjacentHTML(\'beforeend\', budgetRow({}))">Add budget line</button>';
+}
+function budgetRow(b){
+  return '<div class="repeat-row b4">'
+    + '<input placeholder="Source of income" class="bg-i" value="' + esc(b.income || '') + '">'
+    + '<input placeholder="Amount" class="bg-ia" value="' + esc(b.income_amt || '') + '">'
+    + '<input placeholder="Expense" class="bg-e" value="' + esc(b.expense || '') + '">'
+    + '<input placeholder="Amount" class="bg-ea" value="' + esc(b.expense_amt || '') + '">'
+    + '<button class="btn sm danger" onclick="this.parentElement.remove()">&times;</button></div>';
+}
+
+async function editPRF(id, programId){
+  const all = await db.list('prf_requests');
+  const programs = await db.list('programs');
+  let p = id ? all.find(x => x.id === id) : null;
+  if (!p){
+    const src = programId ? programs.find(x => x.id === programId) : null;
+    p = { board_portfolio:'Local Education Board For Kharadar' + (src && src.collaboration ? ', in collaboration with ' + src.collaboration : ''),
+      program_name: src ? src.title : '', brief_description: src ? src.description : '',
+      program_id: programId || null, target_group: src ? src.target_group : '',
+      expected_participants: src ? src.expected_participants : '', venue: src ? src.venue : '',
+      event_date: src ? src.start_date : '', tkn_utilized:'No', transport:'Not required',
+      structure_items:[], aims:[], budget_rows:[], status:'draft', submitted_on: todayISO() };
+  }
+  const progOpts = [['','— none —']].concat(programs.map(x => [x.id, x.title]));
+
+  openModal(id ? 'Edit permission form' : 'New permission form',
+    '<div class="grid g2">' + sel('r-prog','Linked programme', progOpts, p.program_id)
+    + fld('r-portfolio','Name of Boards / Portfolio', p.board_portfolio) + '</div>'
+    + fld('r-name','Name of the Programme', p.program_name)
+    + fld('r-brief','Brief description of the Programme', p.brief_description, 'textarea')
+    + '<h4 class="serif" style="margin:18px 0 6px">Programme structure</h4>'
+    + repeatRows('str', p.structure_items, 'Section title', 'What it covers')
+    + '<h4 class="serif" style="margin:18px 0 6px">Programme approach</h4>'
+    + '<div class="grid g2">' + fld('r-theme','Theme', p.theme) + fld('r-duration','Duration', p.duration) + '</div>'
+    + fld('r-approach','Approach notes', p.approach_notes, 'textarea')
+    + '<h4 class="serif" style="margin:18px 0 6px">Participants</h4>'
+    + '<div class="grid g2">' + fld('r-target','Target group', p.target_group)
+    + fld('r-initial','Initial expected participants', p.initial_participants) + '</div>'
+    + fld('r-focus','Learning focus', p.learning_focus, 'textarea')
+    + '<h4 class="serif" style="margin:18px 0 6px">Aims / objectives</h4>'
+    + repeatRows('aim', p.aims, 'Objective', 'Detail')
+    + '<h4 class="serif" style="margin:18px 0 6px">Services / support required</h4>'
+    + '<div class="grid g2">' + fld('r-sfrom','Service required from', p.service_from)
+    + fld('r-stype','Type of service requested', p.service_type) + '</div>'
+    + fld('r-tkn','No. of TKN utilised and their responsibility', p.tkn_utilized)
+    + '<h4 class="serif" style="margin:18px 0 6px">Venue &amp; logistics</h4>'
+    + '<div class="grid g2">' + fld('r-pdate','Date of the programme (as written on the form)', p.program_date)
+    + fld('r-edate','Actual start date (for the 15-day check)', p.event_date, 'date')
+    + fld('r-venue','Venue', p.venue) + fld('r-vaddr','Address / Jamatkhana', p.venue_address)
+    + fld('r-transport','Mode of transport', p.transport) + fld('r-expected','Expected participants', p.expected_participants) + '</div>'
+    + '<h4 class="serif" style="margin:18px 0 6px">Budget</h4>' + budgetRows(p.budget_rows)
+    + '<div class="grid g2" style="margin-top:10px">' + fld('r-itot','Income total', p.budget_income_total)
+    + fld('r-etot','Expense total', p.budget_expense_total) + '</div>'
+    + '<h4 class="serif" style="margin:18px 0 6px">Event in-charge</h4>'
+    + '<div class="grid g3">' + fld('r-inname','Name', p.incharge_name) + fld('r-indesig','Designation', p.incharge_designation)
+    + fld('r-incontact','Emergency contact', p.incharge_contact) + '</div>'
+    + '<div class="grid g3">' + fld('r-chair','Chairman contact no.', p.chairman_contact)
+    + fld('r-sub','Submitted on', p.submitted_on || todayISO(), 'date')
+    + sel('r-status','Status', [['draft','Draft'],['submitted','Submitted'],['approved','Approved'],['unapproved','Not approved']], p.status) + '</div>',
+    async () => {
+      if (!mv('r-name')){ toast('A programme name is required'); return; }
+      const budget = [...document.querySelectorAll('.bg-i')].map((el,i) => ({
+        income:el.value.trim(),
+        income_amt:document.querySelectorAll('.bg-ia')[i].value.trim(),
+        expense:document.querySelectorAll('.bg-e')[i].value.trim(),
+        expense_amt:document.querySelectorAll('.bg-ea')[i].value.trim()
+      })).filter(b => b.income || b.expense);
+      const row = { program_id:mv('r-prog') || null, board_portfolio:mv('r-portfolio'), program_name:mv('r-name'),
+        brief_description:mv('r-brief'), structure_items:collectRepeat('str'), theme:mv('r-theme'),
+        duration:mv('r-duration'), approach_notes:mv('r-approach'), target_group:mv('r-target'),
+        initial_participants:mv('r-initial'), learning_focus:mv('r-focus'), aims:collectRepeat('aim'),
+        service_from:mv('r-sfrom'), service_type:mv('r-stype'), tkn_utilized:mv('r-tkn'),
+        program_date:mv('r-pdate'), event_date:mv('r-edate') || null, venue:mv('r-venue'),
+        venue_address:mv('r-vaddr'), transport:mv('r-transport'), expected_participants:mv('r-expected'),
+        budget_rows:budget, budget_income_total:mv('r-itot'), budget_expense_total:mv('r-etot'),
+        incharge_name:mv('r-inname'), incharge_designation:mv('r-indesig'), incharge_contact:mv('r-incontact'),
+        chairman_contact:mv('r-chair'), submitted_on:mv('r-sub') || todayISO(), status:mv('r-status') };
+      const lead = row.event_date ? daysBetween(row.submitted_on, row.event_date) : null;
+      if (lead !== null && lead < 15 && row.status === 'submitted'
+          && !confirm('This is ' + lead + ' days before the programme, inside the 15-day window. Save it anyway?')) return;
+      id ? await db.update('prf_requests', id, row) : await db.insert('prf_requests', row);
+      closeModal();
+      toast(lead !== null && lead < 15 ? 'Saved — note the 15-day rule' : 'Saved');
+      render();
+    }, 'Save form');
+}
+
+async function exportPRF(id){
+  const p = (await db.list('prf_requests')).find(x => x.id === id);
+  const budget = (p.budget_rows || []);
+  const fname = p.program_name.replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_') + '_PRF.docx';
+
+  await saveDocx(() => {
+    const out = [
+      para('Kharadar Council', { bold:true, center:true, size:28 }),
+      para('Pre Program Permission Form', { bold:true, center:true, size:26 }),
+      new docx.Paragraph({ text:'' }),
+      labelled('Name of Boards/Portfolio:', p.board_portfolio),
+      labelled('Name Of The Program:', p.program_name),
+      heading('Brief description of the Program:')
+    ];
+    (p.brief_description || '').split(/\n+/).filter(Boolean).forEach(t => out.push(para(t)));
+    if ((p.structure_items || []).length){
+      out.push(heading('Program Structure'));
+      p.structure_items.forEach((s,i) => {
+        out.push(new docx.Paragraph({ spacing:{ before:120, after:60 },
+          children:[ new docx.TextRun({ text:(i+1) + '. ' + s.title, bold:true, size:22 }) ] }));
+        if (s.detail) out.push(para(s.detail));
       });
-      return d;
+    }
+    out.push(heading('Program Approach'));
+    if (p.theme) out.push(labelled('Theme:', p.theme));
+    if (p.duration) out.push(labelled('Duration:', p.duration));
+    (p.approach_notes || '').split(/\n+/).filter(Boolean).forEach(t => out.push(para(t)));
+
+    out.push(heading('Program Participants'));
+    out.push(labelled('Target group:', p.target_group));
+    out.push(labelled('Initial expected participants:', p.initial_participants));
+    out.push(labelled('Learning focus:', p.learning_focus));
+
+    if ((p.aims || []).length){
+      out.push(heading('Aims / Objectives'));
+      p.aims.forEach(a => out.push(labelled(a.title + (a.detail ? ':' : ''), a.detail)));
+    }
+
+    out.push(heading('Services / Support Required'));
+    out.push(labelled('Service required from:', p.service_from));
+    out.push(labelled('Type of Service requested:', p.service_type));
+    out.push(labelled('No. of TKN Utilized (Mandatory) and their responsibility:', p.tkn_utilized));
+
+    out.push(heading('Venue & Logistics'));
+    out.push(labelled('Date of the Program:', p.program_date));
+    out.push(labelled('Venue:', p.venue));
+    out.push(labelled('Address and phone No. of the venue / Name of Jamatkhana:', p.venue_address));
+    out.push(labelled('Mode of transport:', p.transport));
+    out.push(labelled('Expected participants:', p.expected_participants));
+
+    out.push(heading('Budget of the Program'));
+    out.push(simpleTable([['Sources of Income','Amount','Expenses','Amount']]
+      .concat(budget.map(b => [b.income, b.income_amt, b.expense, b.expense_amt]))
+      .concat([['Total', p.budget_income_total || '', 'Total', p.budget_expense_total || '']])));
+
+    out.push(heading('Event In-Charge'));
+    out.push(labelled('Name:', p.incharge_name));
+    out.push(labelled('Designation:', p.incharge_designation));
+    out.push(labelled('Contact Number in case of Emergency (Mandatory):', p.incharge_contact));
+    out.push(new docx.Paragraph({ text:'' }));
+    out.push(labelled('Chairman\u2019s Signatory:', '____________________________'));
+    out.push(labelled('Contact No.:', p.chairman_contact));
+    out.push(new docx.Paragraph({ text:'' }));
+    out.push(para('Approved                                  Unapproved', { bold:true }));
+    return out;
+  }, fname, () => {
+    const L = (a,b) => '<p><b>' + a + '</b> ' + esc(b || '') + '</p>';
+    return '<p align="center"><b>Kharadar Council</b><br><b>Pre Program Permission Form</b></p>'
+      + L('Name of Boards/Portfolio:', p.board_portfolio) + L('Name Of The Program:', p.program_name)
+      + '<h4>Brief description of the Program:</h4><p>' + esc(p.brief_description).replace(/\n/g,'<br>') + '</p>'
+      + ((p.structure_items||[]).length ? '<h4>Program Structure</h4>' + p.structure_items.map((s,i) => '<p><b>' + (i+1) + '. ' + esc(s.title) + '</b><br>' + esc(s.detail) + '</p>').join('') : '')
+      + '<h4>Program Approach</h4>' + L('Theme:', p.theme) + L('Duration:', p.duration) + '<p>' + esc(p.approach_notes) + '</p>'
+      + '<h4>Program Participants</h4>' + L('Target group:', p.target_group) + L('Initial expected participants:', p.initial_participants) + L('Learning focus:', p.learning_focus)
+      + ((p.aims||[]).length ? '<h4>Aims / Objectives</h4>' + p.aims.map(a => L(esc(a.title) + ':', a.detail)).join('') : '')
+      + '<h4>Services / Support Required</h4>' + L('Service required from:', p.service_from) + L('Type of Service requested:', p.service_type) + L('No. of TKN Utilized:', p.tkn_utilized)
+      + '<h4>Venue &amp; Logistics</h4>' + L('Date of the Program:', p.program_date) + L('Venue:', p.venue) + L('Address / Jamatkhana:', p.venue_address) + L('Mode of transport:', p.transport) + L('Expected participants:', p.expected_participants)
+      + '<h4>Budget of the Program</h4><table><tr><th>Sources of Income</th><th>Amount</th><th>Expenses</th><th>Amount</th></tr>'
+      + budget.map(b => '<tr><td>' + esc(b.income) + '</td><td>' + esc(b.income_amt) + '</td><td>' + esc(b.expense) + '</td><td>' + esc(b.expense_amt) + '</td></tr>').join('')
+      + '<tr><td><b>Total</b></td><td>' + esc(p.budget_income_total) + '</td><td><b>Total</b></td><td>' + esc(p.budget_expense_total) + '</td></tr></table>'
+      + '<h4>Event In-Charge</h4>' + L('Name:', p.incharge_name) + L('Designation:', p.incharge_designation) + L('Contact Number in case of Emergency:', p.incharge_contact)
+      + '<p><b>Chairman&rsquo;s Signatory:</b> ____________________________</p>' + L('Contact No.:', p.chairman_contact)
+      + '<p><b>Approved &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Unapproved</b></p>';
+  });
+}
+
+/* =====================================================================
+   Quarterly report
+   ===================================================================== */
+const repState = { quarter:quarterOf(new Date().getMonth()+1), year:new Date().getFullYear(), data:null };
+
+async function buildQuarter(q, y){
+  const months = [(q-1)*3+1, (q-1)*3+2, (q-1)*3+3];
+  const from = y + '-' + String(months[0]).padStart(2,'0') + '-01';
+  const to   = y + '-' + String(months[2]).padStart(2,'0') + '-31';
+  const [cycles, cases, programs] = await Promise.all([db.list('fee_cycles'), db.list('cases'), db.list('programs')]);
+  const inQ = cycles.filter(c => c.year === y && months.includes(c.month)).sort((a,b) => a.month - b.month);
+  const perMonth = [];
+  for (const c of inQ){
+    const es = await db.list('fee_entries', { cycle_id:c.id });
+    const t = k => es.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
+    perMonth.push({ month:MONTHS[c.month-1], status:c.status, students:es.length,
+      pak:t('pak_progressive'), tui:t('tuition'), uni:t('university'),
+      total:t('pak_progressive') + t('tuition') + t('university') });
+  }
+  const qCases = cases.filter(c => c.meeting_date >= from && c.meeting_date <= to);
+  const qProgs = programs.filter(p => {
+    if (p.start_date && p.start_date >= from && p.start_date <= to) return true;       // started in the quarter
+    if (p.start_date && p.end_date && p.start_date <= to && p.end_date >= from) return true; // ran across it
+    if (!p.start_date && p.status === 'ongoing') return true;                          // undated but running
+    return false;
+  });
+  const tally = k => qCases.filter(c => c.decision === k).length;
+  return { q, y, months, perMonth, qCases, qProgs,
+    grand: perMonth.reduce((s,m) => s + m.total, 0),
+    beneficiaries: perMonth.reduce((s,m) => s + m.students, 0),
+    caseStats:{ total:qCases.length, approved:tally('approved'), pending:tally('pending'),
+      rejected:tally('rejected'), forwarded:tally('forwarded'), deferred:tally('deferred'),
+      requested:qCases.reduce((s,c) => s + num(c.amount_requested), 0) } };
+}
+
+async function pageReport(v){
+  const d = await buildQuarter(repState.quarter, repState.year);
+  repState.data = d;
+  const years = []; for (let yy = new Date().getFullYear()+1; yy >= 2023; yy--) years.push(yy);
+
+  let h = head('Quarterly report', 'Everything from the three sheets, the Tuesday log and the programme calendar, compiled for the parent body.',
+    '<div style="width:130px"><select onchange="repState.quarter=+this.value;render()">'
+    + [1,2,3,4].map(q => '<option value="' + q + '"' + (repState.quarter === q ? ' selected' : '') + '>Quarter ' + q + '</option>').join('')
+    + '</select></div><div style="width:96px"><select onchange="repState.year=+this.value;render()">'
+    + years.map(y => '<option' + (repState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
+    + '</select></div><button class="btn gold" onclick="exportReport()">Download Word</button>');
+
+  h += '<div class="stats"><div><div class="k">Disbursed this quarter</div><div class="v">Rs ' + money(d.grand) + '</div></div>'
+    + '<div><div class="k">Student entries supported</div><div class="v">' + d.beneficiaries + '</div></div>'
+    + '<div><div class="k">Cases heard</div><div class="v">' + d.caseStats.total + '</div></div>'
+    + '<div><div class="k">Programmes</div><div class="v">' + d.qProgs.length + '</div></div></div><div style="height:20px"></div>';
+
+  h += '<div class="panel"><h2>Financial assistance by month</h2><div class="body flush"><div class="scroll">'
+    + '<table class="ledger"><thead><tr><th>Month</th><th class="num">Pak Progressive</th><th class="num">Tuition</th>'
+    + '<th class="num">University &amp; others</th><th class="num">Total</th><th class="num">Students</th><th>Sheet</th></tr></thead><tbody>'
+    + (d.perMonth.length ? d.perMonth.map(m => '<tr><td>' + m.month + '</td><td class="num">' + money(m.pak) + '</td>'
+        + '<td class="num">' + money(m.tui) + '</td><td class="num">' + money(m.uni) + '</td>'
+        + '<td class="num">' + money(m.total) + '</td><td class="num">' + m.students + '</td>'
+        + '<td>' + statusTag(m.status) + '</td></tr>').join('')
+      : '<tr><td colspan="7"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
+    + '</tbody><tfoot><tr><td>Quarter total</td>'
+    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.pak,0)) + '</td>'
+    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.tui,0)) + '</td>'
+    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.uni,0)) + '</td>'
+    + '<td class="num">' + money(d.grand) + '</td><td class="num">' + d.beneficiaries + '</td><td></td></tr></tfoot></table>'
+    + '</div></div></div>';
+
+  h += '<div class="grid g2"><div class="panel" style="margin:0"><h2>Cases</h2><div class="body flush"><table class="ledger"><tbody>'
+    + [['Heard', d.caseStats.total], ['Approved', d.caseStats.approved], ['Forwarded to parent body', d.caseStats.forwarded],
+       ['Deferred', d.caseStats.deferred], ['Pending', d.caseStats.pending], ['Not approved', d.caseStats.rejected],
+       ['Total amount requested', 'Rs ' + money(d.caseStats.requested)]]
+      .map(r => '<tr><td>' + r[0] + '</td><td class="num">' + r[1] + '</td></tr>').join('')
+    + '</tbody></table></div></div>';
+  h += '<div class="panel" style="margin:0"><h2>Programmes &amp; activities</h2><div class="body flush">'
+    + (d.qProgs.length ? '<table class="ledger"><tbody>' + d.qProgs.map(p => '<tr><td>' + esc(p.title)
+        + '<div class="mini">' + esc(p.type) + ' · ' + (p.source === 'parent_body' ? 'parent body' : 'LEB') + '</div></td>'
+        + '<td style="width:1%">' + statusTag(p.status) + '</td></tr>').join('') + '</tbody></table>'
+      : '<div class="empty"><p>No programmes recorded in this quarter.</p></div>')
+    + '</div></div></div>';
+  v.innerHTML = h;
+}
+
+async function exportReport(){
+  const d = repState.data;
+  const label = 'Quarter ' + d.q + ' ' + d.y + ' (' + MONTHS[d.months[0]-1] + '–' + MONTHS[d.months[2]-1] + ')';
+  await saveDocx(() => {
+    const out = [
+      para('Local Education Board — Kharadar', { bold:true, center:true, size:28 }),
+      para('Quarterly Report · ' + label, { bold:true, center:true, size:24 }),
+      new docx.Paragraph({ text:'' }),
+      heading('1. Financial assistance'),
+      simpleTable([['Month','Pak Progressive','Tuition (LEB share)','University & others','Total','Students']]
+        .concat(d.perMonth.map(m => [m.month, money(m.pak), money(m.tui), money(m.uni), money(m.total), String(m.students)]))
+        .concat([['Total','','','', money(d.grand), String(d.beneficiaries)]])),
+      heading('2. Cases heard on Tuesday sittings'),
+      simpleTable([['Measure','Count'],
+        ['Cases heard', String(d.caseStats.total)], ['Approved', String(d.caseStats.approved)],
+        ['Forwarded to parent body', String(d.caseStats.forwarded)], ['Deferred', String(d.caseStats.deferred)],
+        ['Pending', String(d.caseStats.pending)], ['Not approved', String(d.caseStats.rejected)],
+        ['Total amount requested (Rs)', money(d.caseStats.requested)]]),
+      heading('3. Programmes, courses and activities')
+    ];
+    if (d.qProgs.length){
+      out.push(simpleTable([['Programme','Type','Origin','Dates','Status']]
+        .concat(d.qProgs.map(p => [p.title, p.type, p.source === 'parent_body' ? 'Parent body' : 'LEB',
+          fmtDate(p.start_date) + (p.end_date ? ' – ' + fmtDate(p.end_date) : ''), p.status]))));
+    } else out.push(para('No programmes were recorded in this quarter.'));
+    out.push(heading('4. Case detail'));
+    if (d.qCases.length){
+      out.push(simpleTable([['Date','Applicant','Request','Amount','Decision']]
+        .concat(d.qCases.map(c => [fmtDate(c.meeting_date), c.applicant_name, c.request_summary || '—',
+          num(c.amount_requested) ? money(c.amount_requested) : '—', c.decision]))));
+    } else out.push(para('No cases were logged in this quarter.'));
+    out.push(new docx.Paragraph({ text:'' }));
+    out.push(para('Prepared on ' + fmtDate(todayISO()) + ' · ' + ME.name));
+    return out;
+  }, 'LEB_Kharadar_Q' + d.q + '_' + d.y + '_Report.docx', () => {
+    const tbl = rows => '<table><tr>' + rows[0].map(c => '<th>' + esc(c) + '</th>').join('') + '</tr>'
+      + rows.slice(1).map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</table>';
+    return '<p align="center"><b>Local Education Board — Kharadar</b><br><b>Quarterly Report · ' + esc(label) + '</b></p>'
+      + '<h4>1. Financial assistance</h4>'
+      + tbl([['Month','Pak Progressive','Tuition','University & others','Total','Students']]
+          .concat(d.perMonth.map(m => [m.month, money(m.pak), money(m.tui), money(m.uni), money(m.total), String(m.students)]))
+          .concat([['Total','','','', money(d.grand), String(d.beneficiaries)]]))
+      + '<h4>2. Cases heard</h4>'
+      + tbl([['Measure','Count'],['Cases heard',String(d.caseStats.total)],['Approved',String(d.caseStats.approved)],
+          ['Forwarded',String(d.caseStats.forwarded)],['Deferred',String(d.caseStats.deferred)],
+          ['Pending',String(d.caseStats.pending)],['Not approved',String(d.caseStats.rejected)],
+          ['Total requested (Rs)', money(d.caseStats.requested)]])
+      + '<h4>3. Programmes</h4>'
+      + (d.qProgs.length ? tbl([['Programme','Type','Origin','Status']].concat(d.qProgs.map(p => [p.title,p.type,p.source,p.status]))) : '<p>None recorded.</p>')
+      + '<p>Prepared on ' + esc(fmtDate(todayISO())) + '</p>';
+  });
+}
+
+async function exportCases(){
+  const rows = (await db.list('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
+  await saveDocx(() => {
+    const out = [ para('Local Education Board — Kharadar', { bold:true, center:true, size:28 }),
+      para('Case minutes', { bold:true, center:true, size:24 }), new docx.Paragraph({ text:'' }) ];
+    const dates = [...new Set(rows.map(r => r.meeting_date))];
+    dates.forEach(d => {
+      out.push(heading('Sitting of ' + fmtDate(d)));
+      out.push(simpleTable([['Applicant','Student','Request','Amount','Recommendation','Decision']]
+        .concat(rows.filter(r => r.meeting_date === d).map(c => [c.applicant_name, c.student_name || '—',
+          c.request_summary || '—', num(c.amount_requested) ? money(c.amount_requested) : '—',
+          c.board_recommendation || '—', c.decision]))));
     });
-
-  return (
-    <div>
-      <div className="row between" style={{ marginBottom: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 18 }}>Teachers & Workers</h2>
-          <div className="muted">{data.staff.length} paid staff · {fmtMoney(payroll)}/month · Marking salaries for {monthLabel(m)}</div>
-        </div>
-        <button className="btn" onClick={() => { setShowForm(!showForm); setEditId(null); setForm(blank); }}>{showForm ? "Close" : "+ Add staff"}</button>
-      </div>
-
-      {showForm && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="grid2">
-            <Field label="NAME"><input className="inp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-            <Field label="ROLE"><input className="inp" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. Math Teacher, Admin" /></Field>
-            <Field label="PROGRAM"><input className="inp" list="progList2" value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })} />
-              <datalist id="progList2">{data.programs.map((p) => <option key={p.id} value={p.name} />)}</datalist></Field>
-            <Field label="MONTHLY SALARY (RS)"><input type="number" className="inp" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></Field>
-          </div>
-          <button className="btn" onClick={save}>{editId ? "Save changes" : "Add staff"}</button>
-        </div>
-      )}
-
-      {data.staff.length === 0 && !showForm ? <div className="card"><Empty text="No staff added yet. Add your paid teachers and workers here." /></div> : (
-        data.staff.map((s) => (
-          <div className="card" key={s.id} style={{ marginBottom: 8 }}>
-            <div className="row between">
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-                <div className="muted" style={{ marginTop: 2 }}>{[s.role, s.program, fmtMoney(s.salary) + "/mo"].filter(Boolean).join(" · ")}</div>
-              </div>
-              <div className="row">
-                <button className={"paychip " + (s.payments && s.payments[m] ? "on" : "off")} onClick={() => togglePaid(s.id)}>
-                  {s.payments && s.payments[m] ? "Salary paid ✓" : "Mark paid"}
-                </button>
-                <button className="btn ghost sm" onClick={() => { setForm({ ...s }); setEditId(s.id); setShowForm(true); }}>Edit</button>
-                <button className="btn danger sm" onClick={() => { if (confirm("Remove " + s.name + "?")) update((d) => { d.staff = d.staff.filter((x) => x.id !== s.id); return d; }); }}>✕</button>
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
+    return out;
+  }, 'LEB_Case_Minutes.docx', () => '<p align="center"><b>LEB Kharadar — Case minutes</b></p>'
+    + rows.map(c => '<p><b>' + esc(fmtDate(c.meeting_date)) + '</b> — ' + esc(c.applicant_name) + ': '
+      + esc(c.request_summary) + ' (' + esc(c.decision) + ')</p>').join(''));
 }
 
-/* ---------- Reports ---------- */
-function Reports({ data }) {
-  const [month, setMonth] = useState(thisMonth());
+/* =====================================================================
+   Board members — admins decide who gets in
+   ===================================================================== */
+async function pageMembers(v){
+  const rows = (await db.list('profiles')).sort((a,b) =>
+    (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.full_name||'').localeCompare(b.full_name||''));
+  const waiting = rows.filter(r => r.role === 'pending');
 
-  const report = useMemo(() => {
-    const active = data.students.filter((s) => s.status === "Active");
-    const paidStudents = data.students.filter((s) => s.payments && s.payments[month]);
-    const paidStaff = data.staff.filter((s) => s.payments && s.payments[month]);
-    const tuitionDisbursed = paidStudents.reduce((a, s) => a + lebCost(s), 0);
-    const salariesPaid = paidStaff.reduce((a, s) => a + (Number(s.salary) || 0), 0);
-    const byStatus = {};
-    data.programs.forEach((p) => { (byStatus[p.status] = byStatus[p.status] || []).push(p.name); });
-    const byType = (type) => active.filter((s) => (s.type || "tuition") === type);
+  let h = head('Board members', 'Anyone can create an account. Nobody sees a record until you approve them here.');
+  if (waiting.length) h += '<div class="note"><b>' + waiting.length + ' account'
+    + (waiting.length > 1 ? 's are' : ' is') + ' waiting for you.</b></div>';
 
-    let t = "LOCAL EDUCATION BOARD — KHARADAR\nMONTHLY REPORT — " + monthLabel(month).toUpperCase() + "\n\n";
-    t += "1. PROGRAMS\n";
-    if (data.programs.length === 0) t += "No programs recorded.\n";
-    PROGRAM_STATUSES.forEach((s) => { if (byStatus[s]) t += "• " + s + ": " + byStatus[s].join(", ") + "\n"; });
-
-    t += "\n2. TUITION FEE SUPPORT\n";
-    t += "• Tuition Fees: " + byType("tuition").length + " students\n";
-    t += "• PPS Afghan Student Fees: " + byType("pps").length + " students\n";
-    t += "• University & Other: " + byType("uni").length + " students\n";
-    t += "• Fees disbursed this month: " + paidStudents.length + " students — " + fmtMoney(tuitionDisbursed) + "\n";
-    const pending = active.filter((s) => !(s.payments && s.payments[month]));
-    if (pending.length) t += "• Pending: " + pending.map((s) => s.name).join(", ") + "\n";
-
-    t += "\n3. STAFF & PAYROLL\n";
-    t += "• Total paid staff: " + data.staff.length + "\n";
-    t += "• Salaries paid this month: " + paidStaff.length + " — " + fmtMoney(salariesPaid) + "\n";
-    const pendingStaff = data.staff.filter((s) => !(s.payments && s.payments[month]));
-    if (pendingStaff.length) t += "• Salaries pending: " + pendingStaff.map((s) => s.name).join(", ") + "\n";
-
-    t += "\n4. PRF / COUNCIL APPROVALS\n";
-    if (data.prfs.length === 0) t += "No PRFs recorded.\n";
-    data.prfs.forEach((p) => { t += "• " + p.programName + " — " + p.status + "\n"; });
-
-    t += "\n5. TOTAL EXPENDITURE THIS MONTH\n" + fmtMoney(tuitionDisbursed + salariesPaid) + "\n";
-    t += "\nPrepared via LEB Kharadar Register.";
-    return t;
-  }, [data, month]);
-
-  return (
-    <div>
-      <div className="row between" style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: 18 }}>Monthly Report</h2>
-        <div className="row">
-          <input type="month" className="inp" style={{ width: "auto" }} value={month} onChange={(e) => setMonth(e.target.value)} />
-          <CopyBtn text={report} label="Copy report" />
-        </div>
-      </div>
-      <div className="card"><div className="mono">{report}</div></div>
-      <div className="faint" style={{ marginTop: 8 }}>Compiles automatically from Programs, Tuition Support, Staff, and PRF data.</div>
-    </div>
-  );
+  h += '<div class="panel"><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Name</th><th>Designation</th><th>Contact</th><th>Access</th><th></th></tr></thead><tbody>'
+    + rows.map(p => {
+        const me = p.id === ME.id;
+        return '<tr><td>' + esc(p.full_name || '(no name yet)') + (me ? ' <span class="tag t-blue">you</span>' : '') + '</td>'
+        + '<td>' + esc(p.designation || '—') + '</td><td>' + esc(p.contact || '—') + '</td>'
+        + '<td>' + (p.role === 'pending' ? '<span class="tag t-gold">Waiting</span>'
+                  : p.role === 'admin'   ? '<span class="tag t-green">Admin</span>'
+                  : p.role === 'blocked' ? '<span class="tag t-red">Blocked</span>'
+                  : '<span class="tag t-grey">Member</span>') + '</td>'
+        + '<td style="width:1%;white-space:nowrap">'
+        + (me ? '<span class="mini">you cannot change your own access</span>'
+              : '<select onchange="setRole(\'' + p.id + '\',this.value)" style="width:150px">'
+                + [['pending','Waiting'],['member','Member'],['admin','Admin'],['blocked','Blocked']]
+                    .map(o => '<option value="' + o[0] + '"' + (p.role === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('')
+                + '</select>')
+        + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  v.innerHTML = h;
+}
+async function setRole(id, role){
+  await db.update('profiles', id, { role:role });
+  toast('Access updated'); render();
 }
 
-/* ---------- WhatsApp announcements ---------- */
-function WhatsApp({ data, update }) {
-  const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const [newGroup, setNewGroup] = useState("");
-
-  const draftFromProgram = (p) => {
-    setTitle(p.name + " — Announcement");
-    setMessage("*LEB KHARADAR — ANNOUNCEMENT* 📢\n\nAlhamdulillah, we are pleased to announce *" + p.name + "*" + (p.startDate ? " starting from *" + p.startDate + "*" : "") + ".\n\n" + (p.notes ? p.notes + "\n\n" : "") + "For registration and details, please contact the LEB Kharadar office.\n\nJazakAllah,\nLocal Education Board — Kharadar");
-  };
-
-  const saveAnnouncement = () => {
-    if (!message.trim()) return;
-    update((d) => { d.announcements.unshift({ id: uid(), title: title || "Announcement", message, date: new Date().toISOString().slice(0, 10), sentTo: [] }); return d; });
-    setTitle(""); setMessage("");
-  };
-
-  return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div className="card">
-        <h2 style={{ fontSize: 16, marginBottom: 8 }}>Compose announcement</h2>
-        {data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div className="lbl">QUICK DRAFT FROM A PROGRAM</div>
-            <div className="row">
-              {data.programs.filter((p) => ["Approved", "Launched"].includes(p.status)).map((p) => (
-                <button key={p.id} className="btn soft sm" onClick={() => draftFromProgram(p)}>{p.name}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        <Field label="TITLE (FOR YOUR RECORD)"><input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-        <Field label="MESSAGE"><textarea rows="8" className="inp" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type or generate the WhatsApp message… *bold* works in WhatsApp." /></Field>
-        <div className="row">
-          <button className="btn" onClick={saveAnnouncement}>Save to send-list</button>
-          {message && <CopyBtn text={message} label="Copy message" />}
-        </div>
-      </div>
-
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Your WhatsApp groups</div>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <input className="inp" style={{ flex: 1, width: "auto" }} value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="Add a group name"
-            onKeyDown={(e) => { if (e.key === "Enter" && newGroup.trim()) { update((d) => { d.groups.push({ id: uid(), name: newGroup.trim() }); return d; }); setNewGroup(""); } }} />
-          <button className="btn ghost" onClick={() => { if (newGroup.trim()) { update((d) => { d.groups.push({ id: uid(), name: newGroup.trim() }); return d; }); setNewGroup(""); } }}>Add</button>
-        </div>
-        <div className="row">
-          {data.groups.map((g) => (
-            <span key={g.id} className="badge" style={{ background: "#E3F2E9", color: "#0E3B2E", display: "inline-flex", alignItems: "center", gap: 6 }}>
-              {g.name}
-              <span style={{ color: "#A33222", cursor: "pointer" }} onClick={() => update((d) => { d.groups = d.groups.filter((x) => x.id !== g.id); return d; })}>✕</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Send checklist</div>
-        {data.announcements.length === 0 ? <Empty text="Saved announcements appear here with a checklist of groups, so nothing gets missed." /> : (
-          data.announcements.map((a) => (
-            <div key={a.id} style={{ border: "1px solid #E4E7E4", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-              <div className="row between" style={{ marginBottom: 4 }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{a.title} <span className="faint">· {a.date}</span></div>
-                <div className="row">
-                  <CopyBtn text={a.message} />
-                  <button className="btn danger sm" onClick={() => update((d) => { d.announcements = d.announcements.filter((x) => x.id !== a.id); return d; })}>✕</button>
-                </div>
-              </div>
-              <div className="muted" style={{ marginBottom: 8, whiteSpace: "pre-wrap" }}>{a.message.slice(0, 160)}{a.message.length > 160 ? "…" : ""}</div>
-              <div className="lbl">SENT TO ({a.sentTo.length}/{data.groups.length})</div>
-              <div className="row">
-                {data.groups.map((g) => {
-                  const sent = a.sentTo.includes(g.id);
-                  return (
-                    <button key={g.id} className={"paychip " + (sent ? "on" : "off")}
-                      onClick={() => update((d) => {
-                        d.announcements = d.announcements.map((x) => {
-                          if (x.id !== a.id) return x;
-                          const sentTo = x.sentTo.includes(g.id) ? x.sentTo.filter((y) => y !== g.id) : x.sentTo.concat(g.id);
-                          return { ...x, sentTo };
-                        });
-                        return d;
-                      })}>
-                      {sent ? "✓ " : ""}{g.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+/* =====================================================================
+   Sign in, sign up, boot
+   ===================================================================== */
+function gateMode(m){
+  $('tab-in').style.display = m === 'in' ? 'block' : 'none';
+  $('tab-up').style.display = m === 'up' ? 'block' : 'none';
+  $('gate-msg').textContent = '';
+}
+function gateMsg(text, bad){
+  const el = $('gate-msg');
+  el.textContent = text;
+  el.style.color = bad ? 'var(--red)' : 'var(--muted)';
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+async function signIn(){
+  const email = mv('em'), pass = $('pw').value;
+  if (!email || !pass){ gateMsg('Enter your email and password.', true); return; }
+  gateMsg('Signing in…');
+  const { data, error } = await sb.auth.signInWithPassword({ email:email, password:pass });
+  if (error){ gateMsg(error.message, true); return; }
+  await afterAuth(data.user);
+}
+
+async function signUp(){
+  const name = mv('su-name'), email = mv('su-em'), pass = $('su-pw').value;
+  if (!name || !email || !pass){ gateMsg('Fill in all three fields.', true); return; }
+  if (pass.length < 6){ gateMsg('Use a password of at least 6 characters.', true); return; }
+  gateMsg('Creating your account…');
+  const { data, error } = await sb.auth.signUp({
+    email:email, password:pass, options:{ data:{ full_name:name } }
+  });
+  if (error){ gateMsg(error.message, true); return; }
+  if (!data.session){
+    gateMsg('Account created. Check your email for the confirmation link, then sign in.');
+    gateMode('in');
+    return;
+  }
+  await afterAuth(data.user);
+}
+
+async function signOut(){
+  if (!LOCAL) await sb.auth.signOut();
+  location.reload();
+}
+
+async function afterAuth(user){
+  await loadProfile(user);
+  if (ME.role === 'pending' || ME.role === 'blocked'){
+    $('gate').style.display = 'none';
+    $('hold').style.display = 'flex';
+    $('hold-who').textContent = ME.name || user.email;
+    return;
+  }
+  startApp();
+}
+
+async function loadProfile(user){
+  ME = { id:user.id, name:user.email, role:'pending' };
+  try{
+    let { data } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    if (!data){
+      // The trigger normally makes this row; create it here if it is missing.
+      const first = (await sb.from('profiles').select('id', { count:'exact', head:true })).count === 0;
+      const ins = await sb.from('profiles').insert({
+        id:user.id,
+        full_name:(user.user_metadata && user.user_metadata.full_name) || user.email,
+        role: first ? 'admin' : 'pending'
+      }).select().single();
+      data = ins.data;
+    }
+    if (data) ME = { id:user.id, name:data.full_name || user.email, role:data.role || 'pending' };
+  }catch(e){
+    console.warn('Could not read profile', e);
+  }
+}
+
+function startApp(){
+  $('gate').style.display = 'none';
+  $('hold').style.display = 'none';
+  $('app').style.display = 'block';
+  $('who').textContent = ME.name || 'Board member';
+  $('role-lbl').innerHTML = esc((ME.role === 'admin' ? 'Admin' : 'Member') + ' · ' + APP_VERSION)
+    + (LOCAL ? '<br><span style="cursor:pointer;text-decoration:underline" onclick="resetLocal()">Clear local records</span>' : '');
+  drawNav(); render();
+}
+
+(async function boot(){
+  if (LOCAL){
+    loadLocal();
+    ME = { id:'local', name:'Board member', role:'admin' };
+    startApp();
+    return;
+  }
+  $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+  $('su-pw').addEventListener('keydown', e => { if (e.key === 'Enter') signUp(); });
+  try{
+    const { data } = await sb.auth.getSession();
+    if (data && data.session){ await afterAuth(data.session.user); }
+  }catch(e){ console.warn(e); }
+})();
 </script>
 </body>
 </html>
