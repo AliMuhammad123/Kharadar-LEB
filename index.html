@@ -251,9 +251,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
    CONFIG — paste your Supabase project details here.
    Leave both blank to run in sample mode (nothing is saved).
    ===================================================================== */
-const SUPABASE_URL = 'https://rsbnutiawozwwwacundu.supabase.co/rest/v1/';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzYm51dGlhd296d3d3YWN1bmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4ODQ4MjUsImV4cCI6MjEwNDQ2MDgyNX0.khxWo4djkFyKgNgx-UhuXUTq-5ai1rKJMKZDh13cU4o';
-const APP_VERSION = 'v1.3';
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+const APP_VERSION = 'v1.4';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHEETS = {
@@ -272,8 +272,13 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY){
   } else if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(SUPABASE_URL.trim())){
     BOOT_ERROR = 'The Supabase URL looks wrong. It should be exactly https://yourproject.supabase.co '
       + 'with no trailing path.';
-  } else if (SUPABASE_ANON_KEY.trim().split('.').length !== 3){
-    BOOT_ERROR = 'The anon key looks incomplete. Copy the whole key in one piece, with no line breaks.';
+  } else if (!(SUPABASE_ANON_KEY.trim().split('.').length === 3
+            || /^sb_publishable_/.test(SUPABASE_ANON_KEY.trim()))){
+    BOOT_ERROR = 'The anon key looks incomplete. Use either the JWT key beginning "eyJ" or the newer '
+      + 'key beginning "sb_publishable_", copied in one piece with no line breaks.';
+  } else if (/service_role|^sb_secret_/.test(SUPABASE_ANON_KEY)){
+    BOOT_ERROR = 'That is the secret service key. It must never go in a published file. '
+      + 'Use the anon / publishable key instead, and rotate the secret one in Supabase now.';
   } else {
     try{
       sb = supabase.createClient(SUPABASE_URL.trim(), SUPABASE_ANON_KEY.trim());
