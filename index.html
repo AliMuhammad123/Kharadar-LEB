@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
@@ -248,12 +249,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
 
 <script>
 /* =====================================================================
-   CONFIG — paste your Supabase project details here.
-   Leave both blank to run in sample mode (nothing is saved).
+   CONFIG lives in config.js, next to this file, so that replacing
+   index.html never wipes your Supabase keys. If config.js is missing
+   the app simply runs in local mode.
    ===================================================================== */
-const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
-const APP_VERSION = 'v1.4';
+const CFG = (window.LEB_CONFIG || {});
+const SUPABASE_URL = (CFG.url || '').trim();
+const SUPABASE_ANON_KEY = (CFG.key || '').trim();
+const APP_VERSION = 'v1.5';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHEETS = {
@@ -481,7 +484,7 @@ async function pageDash(v){
   let h = head('Overview', MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1));
 
   if (LOCAL) h += '<div class="note"><b>Local mode.</b> Records are saved in this browser only, so nobody else can see them and clearing your browser data wipes them. '
-    + 'Add your Supabase URL and key at the top of <code>index.html</code> to move the board onto a shared database.'
+    + 'This means <code>config.js</code> is missing, empty, or was not uploaded next to <code>index.html</code>.'
     + (canPersist ? '' : ' <b>This browser is blocking storage, so nothing will survive a refresh here.</b>') + '</div>';
 
   if (late.length) h += '<div class="note warn"><b>' + late.length + ' permission form' + (late.length>1?'s':'')
