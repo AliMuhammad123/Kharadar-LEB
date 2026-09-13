@@ -99,6 +99,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
   margin:0;padding:12px 16px;font-size:16px;border-bottom:1px solid var(--line);
   display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
 }
+.panel > h2 .mini{margin-left:auto;margin-right:10px}
 .panel .body{padding:16px}
 .panel .body.flush{padding:0}
 
@@ -164,6 +165,41 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
 .modal footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;
   justify-content:flex-end;gap:8px;background:#FAFBFB}
 .x{background:none;border:none;font-size:21px;line-height:1;cursor:pointer;color:var(--muted)}
+
+/* ---------- send buttons ---------- */
+.btn.send{background:var(--blue);border-color:var(--blue)}
+.btn.send:hover{filter:brightness(1.15)}
+.send-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;
+  padding-top:16px;border-top:1px solid var(--line)}
+.send-row .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px}
+.btn.send-wa{background:#1E8A5F;border-color:#1E8A5F}
+.btn.send-wa:hover{background:#19754F}
+.btn.send-em{background:var(--blue);border-color:var(--blue)}
+.btn.send-em:hover{filter:brightness(1.15)}
+
+/* ---------- funds ---------- */
+.fund-stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);
+  background:#fff;border-radius:var(--r);overflow:hidden;margin-bottom:4px}
+.fund-stats > div{padding:15px 17px;border-right:1px solid var(--line);border-top:3px solid transparent}
+.fund-stats > div:last-child{border-right:none}
+.fund-stats .k{font-size:12px;color:var(--muted)}
+.fund-stats .v{font-family:'IBM Plex Serif',serif;font-size:25px;margin-top:3px;font-variant-numeric:tabular-nums}
+.fund-stats .in{border-top-color:var(--green)}
+.fund-stats .out{border-top-color:var(--gold-line)}
+.fund-stats .bal{border-top-color:var(--blue)}
+.fund-stats .bal.neg{border-top-color:var(--red)}
+.fund-stats .sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+@media(max-width:860px){.fund-stats{grid-template-columns:1fr 1fr}
+  .fund-stats>div{border-bottom:1px solid var(--line)}}
+
+.bar{height:6px;background:#E8ECEA;border-radius:3px;margin-top:6px;max-width:250px;overflow:hidden}
+.bar > span{display:block;height:6px;border-radius:3px;background:var(--gold)}
+.bar.g > span{background:var(--green)}
+
+.flowline{display:flex;align-items:stretch;gap:2px;height:34px;margin:0 0 18px;
+  border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+.flowline div{display:flex;align-items:center;justify-content:center;font-size:11.5px;
+  color:#fff;font-weight:500;white-space:nowrap;overflow:hidden;min-width:0}
 
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);
   color:#fff;padding:10px 18px;border-radius:var(--r);font-size:13.5px;z-index:99;display:none}
@@ -256,7 +292,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
 const CFG = (window.LEB_CONFIG || {});
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v1.5';
+const APP_VERSION = 'v1.7';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHEETS = {
@@ -302,7 +338,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts'];
 const STORE_KEY = 'leb-kharadar';
 const mem = {};
 TABLES.forEach(t => mem[t] = []);
@@ -422,6 +458,7 @@ const mv = id => { const el = $(id); return el ? el.value.trim() : ''; };
 const PAGES = [
   { id:'dash',     label:'Overview'          },
   { id:'fees',     label:'Fee sheets'        },
+  { id:'funds',    label:'Funds & donors'    },
   { id:'students', label:'Student register'  },
   { id:'cases',    label:'Tuesday cases'     },
   { id:'programs', label:'Programmes'        },
@@ -446,6 +483,7 @@ async function render(){
   try{
     if (page === 'dash')      await pageDash(v);
     if (page === 'fees')      await pageFees(v);
+    if (page === 'funds')     await pageFunds(v);
     if (page === 'students')  await pageStudents(v);
     if (page === 'cases')     await pageCases(v);
     if (page === 'programs')  await pagePrograms(v);
@@ -832,6 +870,483 @@ async function exportWorkbook(){
 }
 
 
+
+/* =====================================================================
+   Funds & donors — every rupee in, every rupee out
+   ===================================================================== */
+const FUND_CATS = {
+  school_monthly:'School monthly fees',
+  annual_fees:'Annual & admission fees',
+  books_copies:'Books & copies',
+  uniform:'Uniform & shoes',
+  exam_fees:'Exam & board fees',
+  tuition:'Tuition support',
+  university:'University & college fees',
+  transport:'Transport',
+  other:'Other support'
+};
+const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university' };
+const PAY_MODES = ['Cash','Bank transfer','Cheque','Online','In kind'];
+
+const fundState = { year:new Date().getFullYear(), scope:'year', includeSheets:true };
+
+function fundRange(){
+  const y = fundState.year, sc = fundState.scope;
+  const pad = n => String(n).padStart(2,'0');
+  if (sc === 'year') return { from:y+'-01-01', to:y+'-12-31', label:'Year ' + y };
+  if (sc.charAt(0) === 'q'){
+    const q = +sc.slice(1), m0 = (q-1)*3 + 1;
+    return { from:y+'-'+pad(m0)+'-01', to:y+'-'+pad(m0+2)+'-31',
+             label:'Quarter ' + q + ' ' + y };
+  }
+  const m = +sc.slice(1);
+  return { from:y+'-'+pad(m)+'-01', to:y+'-'+pad(m)+'-31', label:MONTHS[m-1] + ' ' + y };
+}
+
+async function fundData(){
+  const R = fundRange();
+  const [donations, disb, cycles] = await Promise.all([
+    db.list('donations'), db.list('disbursements'), db.list('fee_cycles')
+  ]);
+  const inRange = d => d && d >= R.from && d <= R.to;
+  const receipts = donations.filter(d => inRange(d.received_on))
+    .sort((a,b) => (b.received_on||'').localeCompare(a.received_on||''));
+  const manual = disb.filter(d => inRange(d.paid_on))
+    .sort((a,b) => (b.paid_on||'').localeCompare(a.paid_on||''));
+
+  // Money paid out through the monthly fee sheets, so it is never typed twice.
+  const sheetPayments = [];
+  if (fundState.includeSheets){
+    for (const c of cycles){
+      const day = c.year + '-' + String(c.month).padStart(2,'0') + '-01';
+      if (!inRange(day)) continue;
+      const entries = await db.list('fee_entries', { cycle_id:c.id });
+      for (const k in SHEET_CAT){
+        const amt = entries.filter(e => e.sheet === k)
+          .reduce((sum,e) => sum + num(e[totalKey(k)]), 0);
+        if (amt > 0) sheetPayments.push({
+          id:'sheet-' + c.id + '-' + k, paid_on:day, category:SHEET_CAT[k],
+          paid_to:SHEETS[k].short + ' sheet, ' + MONTHS[c.month-1] + ' ' + c.year,
+          student_name:'', amount:amt, mode:'', fromSheet:true,
+          students:entries.filter(e => e.sheet === k).length
+        });
+      }
+    }
+  }
+  const payments = manual.concat(sheetPayments)
+    .sort((a,b) => (b.paid_on||'').localeCompare(a.paid_on||''));
+
+  const totalIn  = receipts.reduce((s,d) => s + num(d.amount), 0);
+  const totalOut = payments.reduce((s,d) => s + num(d.amount), 0);
+
+  const byCat = {};
+  payments.forEach(p => { byCat[p.category] = (byCat[p.category] || 0) + num(p.amount); });
+  const byDonor = {};
+  receipts.forEach(d => {
+    const k = (d.donor_name || 'Unnamed').trim();
+    byDonor[k] = (byDonor[k] || 0) + num(d.amount);
+  });
+
+  return { R, receipts, payments, manual, totalIn, totalOut, byCat, byDonor,
+           balance: totalIn - totalOut };
+}
+
+async function pageFunds(v){
+  const d = await fundData();
+  const years = []; for (let y = new Date().getFullYear()+1; y >= 2023; y--) years.push(y);
+  const scopes = [['year','Whole year']]
+    .concat([1,2,3,4].map(q => ['q'+q, 'Quarter ' + q]))
+    .concat(MONTHS.map((m,i) => ['m'+(i+1), m]));
+
+  let h = head('Funds & donors', 'What came in, what went out, and what is left \u2014 across every kind of support the board gives.',
+    '<div style="width:96px"><select onchange="fundState.year=+this.value;render()">'
+    + years.map(y => '<option' + (fundState.year === y ? ' selected' : '') + '>' + y + '</option>').join('') + '</select></div>'
+    + '<div style="width:140px"><select onchange="fundState.scope=this.value;render()">'
+    + scopes.map(o => '<option value="' + o[0] + '"' + (fundState.scope === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('')
+    + '</select></div>'
+    + '<button class="btn send" onclick="openShare(\'funds\')">Send</button>'
+    + '<button class="btn ghost" onclick="exportLedger()">Download ledger</button>'
+    + '<button class="btn ghost" onclick="editDisbursement()">Record payment</button>'
+    + '<button class="btn" onclick="editDonation()">Record receipt</button>');
+
+  const pctOut = d.totalIn ? Math.min(100, Math.round(d.totalOut / d.totalIn * 100)) : 0;
+  h += '<div class="fund-stats">'
+    + '<div class="in"><div class="k">Received from donors</div><div class="v">Rs ' + money(d.totalIn) + '</div>'
+      + '<div class="sub">' + d.receipts.length + ' receipt' + (d.receipts.length === 1 ? '' : 's') + '</div></div>'
+    + '<div class="out"><div class="k">Delivered to students</div><div class="v">Rs ' + money(d.totalOut) + '</div>'
+      + '<div class="sub">' + d.payments.length + ' payment' + (d.payments.length === 1 ? '' : 's') + '</div></div>'
+    + '<div class="bal' + (d.balance < 0 ? ' neg' : '') + '"><div class="k">'
+      + (d.balance < 0 ? 'Short by' : 'Still in hand') + '</div><div class="v"'
+      + (d.balance < 0 ? ' style="color:var(--red)"' : '') + '>Rs ' + money(Math.abs(d.balance)) + '</div>'
+      + '<div class="sub">' + pctOut + '% of receipts passed on</div></div>'
+    + '<div><div class="k">Donors this period</div><div class="v">' + Object.keys(d.byDonor).length + '</div>'
+      + '<div class="sub">' + esc(d.R.label) + '</div></div>'
+    + '</div>';
+
+  // a single line showing where the money went, proportionally
+  const flowCats = Object.keys(d.byCat).sort((a,b) => d.byCat[b] - d.byCat[a]);
+  if (d.totalOut > 0){
+    const shades = ['#0E3330','#1B6B47','#8A6100','#1B4F7A','#4F6B64','#A67C3B','#3C7A6A','#6B5B8A','#8A4B3B'];
+    h += '<div class="flowline" title="Where the money went">'
+      + flowCats.map((c,i) => {
+          const pct = d.byCat[c] / d.totalOut * 100;
+          return '<div style="flex:' + pct.toFixed(2) + ';background:' + shades[i % shades.length] + '" '
+            + 'title="' + esc(FUND_CATS[c] || c) + ': Rs ' + money(d.byCat[c]) + '">'
+            + (pct > 11 ? esc(FUND_CATS[c] || c) : (pct > 5 ? Math.round(pct) + '%' : '')) + '</div>';
+        }).join('') + '</div>';
+  } else h += '<div style="height:18px"></div>';
+
+  if (d.balance < 0) h += '<div class="note warn"><b>More has gone out than came in for ' + esc(d.R.label) + '.</b> '
+    + 'That is normal if you are spending a balance carried over from an earlier period, but worth checking '
+    + 'that every receipt has been recorded.</div>';
+
+  h += '<label style="display:flex;gap:8px;align-items:center;margin-bottom:16px;color:var(--text)">'
+    + '<input type="checkbox"' + (fundState.includeSheets ? ' checked' : '')
+    + ' onchange="fundState.includeSheets=this.checked;render()" style="width:auto"> '
+    + 'Count the monthly fee sheets as money delivered</label>';
+
+  // ---- where the money went ----
+  const cats = Object.keys(d.byCat).sort((a,b) => d.byCat[b] - d.byCat[a]);
+  h += '<div class="grid g2"><div class="panel" style="margin:0"><h2>Where the money went</h2><div class="body flush">'
+    + (cats.length ? '<table class="ledger"><tbody>' + cats.map(c => {
+        const pct = d.totalOut ? Math.round(d.byCat[c] / d.totalOut * 100) : 0;
+        return '<tr><td>' + esc(FUND_CATS[c] || c)
+          + '<div class="bar"><span style="width:' + pct + '%"></span></div></td>'
+          + '<td class="num">Rs ' + money(d.byCat[c]) + '<div class="mini">' + pct + '%</div></td></tr>';
+      }).join('') + '</tbody></table>'
+      : '<div class="empty"><p>Nothing paid out in this period.</p></div>')
+    + '</div></div>';
+
+  const donors = Object.keys(d.byDonor).sort((a,b) => d.byDonor[b] - d.byDonor[a]);
+  h += '<div class="panel" style="margin:0"><h2>Who gave</h2><div class="body flush">'
+    + (donors.length ? '<table class="ledger"><tbody>' + donors.map(n => {
+        const pct = d.totalIn ? Math.round(d.byDonor[n] / d.totalIn * 100) : 0;
+        return '<tr><td>' + esc(n) + '<div class="bar g"><span style="width:' + pct + '%"></span></div></td>'
+          + '<td class="num">Rs ' + money(d.byDonor[n]) + '<div class="mini">' + pct + '%</div></td></tr>';
+      }).join('')
+      + '</tbody><tfoot><tr><td>Total</td><td class="num">Rs ' + money(d.totalIn) + '</td></tr></tfoot></table>'
+      : '<div class="empty"><p>No receipts recorded yet.</p><button class="btn" onclick="editDonation()">Record the first one</button></div>')
+    + '</div></div></div>';
+
+  // ---- receipts ----
+  h += '<div class="panel"><h2>Receipts \u2014 money in<span class="mini">' + esc(d.R.label) + '</span></h2><div class="body flush">'
+    + (d.receipts.length ? '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th><th>Date</th><th>Donor</th>'
+      + '<th>Given for</th><th>Mode</th><th>Reference</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
+      + d.receipts.map((r,i) => '<tr><td class="sn">' + (i+1) + '</td><td>' + fmtDate(r.received_on) + '</td>'
+        + '<td>' + esc(r.donor_name || '\u2014') + (r.donor_contact ? '<div class="mini">' + esc(r.donor_contact) + '</div>' : '') + '</td>'
+        + '<td>' + esc(r.purpose === 'general' || !r.purpose ? 'General fund' : (FUND_CATS[r.purpose] || r.purpose)) + '</td>'
+        + '<td>' + esc(r.mode || '\u2014') + '</td>'
+        + '<td>' + esc(r.reference_no || '\u2014') + (r.receipt_no ? '<div class="mini">receipt ' + esc(r.receipt_no) + '</div>' : '') + '</td>'
+        + '<td class="num">' + money(r.amount) + '</td>'
+        + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editDonation(\'' + r.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delRow(\'donations\',\'' + r.id + '\')">&times;</button></td></tr>').join('')
+      + '</tbody><tfoot><tr><td colspan="6">Total received</td><td class="num">Rs ' + money(d.totalIn) + '</td><td></td></tr></tfoot></table></div>'
+      : '<div class="empty"><p>No receipts in this period.</p><button class="btn" onclick="editDonation()">Record a receipt</button></div>')
+    + '</div></div>';
+
+  // ---- payments ----
+  h += '<div class="panel"><h2>Payments \u2014 money out<span class="mini">' + esc(d.R.label) + '</span></h2><div class="body flush">'
+    + (d.payments.length ? '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th><th>Date</th><th>Kind of support</th>'
+      + '<th>Paid for / to</th><th>Mode</th><th>Source</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
+      + d.payments.map((p,i) => '<tr><td class="sn">' + (i+1) + '</td><td>' + fmtDate(p.paid_on) + '</td>'
+        + '<td>' + esc(FUND_CATS[p.category] || p.category) + '</td>'
+        + '<td>' + esc(p.student_name || p.paid_to || '\u2014')
+          + (p.fromSheet ? '<div class="mini">' + p.students + ' students</div>'
+             : (p.institution ? '<div class="mini">' + esc(p.institution) + '</div>' : '')) + '</td>'
+        + '<td>' + esc(p.mode || '\u2014') + '</td>'
+        + '<td>' + (p.fromSheet ? '<span class="tag t-blue">Fee sheet</span>' : '<span class="tag t-grey">Entered</span>') + '</td>'
+        + '<td class="num">' + money(p.amount) + '</td>'
+        + '<td style="width:1%;white-space:nowrap">' + (p.fromSheet
+            ? '<button class="btn sm ghost" onclick="go(\'fees\')">Open sheet</button>'
+            : '<button class="btn sm ghost" onclick="editDisbursement(\'' + p.id + '\')">Edit</button> '
+              + '<button class="btn sm danger" onclick="delRow(\'disbursements\',\'' + p.id + '\')">&times;</button>')
+        + '</td></tr>').join('')
+      + '</tbody><tfoot><tr><td colspan="6">Total delivered</td><td class="num">Rs ' + money(d.totalOut) + '</td><td></td></tr></tfoot></table></div>'
+      : '<div class="empty"><p>No payments in this period.</p><button class="btn" onclick="editDisbursement()">Record a payment</button></div>')
+    + '</div></div>';
+
+  v.innerHTML = h;
+}
+
+async function editDonation(id){
+  const r = id ? (await db.list('donations')).find(x => x.id === id) : { received_on:todayISO(), purpose:'general', mode:'Cash' };
+  const purposes = [['general','General fund']].concat(Object.keys(FUND_CATS).map(k => [k, FUND_CATS[k]]));
+  openModal(id ? 'Edit receipt' : 'Record a receipt',
+    '<div class="grid g3">' + fld('d-date','Date received', r.received_on, 'date')
+    + fld('d-amt','Amount (Rs)', r.amount, 'number')
+    + sel('d-purpose','Given for', purposes, r.purpose) + '</div>'
+    + '<div class="grid g2">' + fld('d-donor','Donor name', r.donor_name)
+    + fld('d-contact','Donor contact', r.donor_contact) + '</div>'
+    + '<div class="grid g3">' + sel('d-mode','Mode', PAY_MODES, r.mode)
+    + fld('d-ref','Bank / cheque reference', r.reference_no)
+    + fld('d-receipt','Receipt no. issued', r.receipt_no) + '</div>'
+    + fld('d-notes','Notes', r.notes, 'textarea'),
+    async () => {
+      if (!num(mv('d-amt'))){ toast('Enter an amount'); return; }
+      const row = { received_on:mv('d-date') || todayISO(), amount:num(mv('d-amt')), purpose:mv('d-purpose'),
+        donor_name:mv('d-donor'), donor_contact:mv('d-contact'), mode:mv('d-mode'),
+        reference_no:mv('d-ref'), receipt_no:mv('d-receipt'), notes:mv('d-notes') };
+      id ? await db.update('donations', id, row) : await db.insert('donations', row);
+      closeModal(); toast('Receipt saved'); render();
+    });
+}
+
+async function editDisbursement(id){
+  const r = id ? (await db.list('disbursements')).find(x => x.id === id) : { paid_on:todayISO(), category:'books_copies', mode:'Cash' };
+  const students = await db.list('students');
+  const cats = Object.keys(FUND_CATS).map(k => [k, FUND_CATS[k]]);
+  openModal(id ? 'Edit payment' : 'Record a payment',
+    '<p class="mini" style="margin-top:0">Use this for anything outside the three monthly fee sheets \u2014 '
+    + 'annual fees, books and copies, uniform, exam fees and so on. The monthly sheets are counted automatically.</p>'
+    + '<div class="grid g3">' + fld('y-date','Date paid', r.paid_on, 'date')
+    + fld('y-amt','Amount (Rs)', r.amount, 'number')
+    + sel('y-cat','Kind of support', cats, r.category) + '</div>'
+    + '<div class="grid g2">'
+    + sel('y-student','Student', [['','\u2014 not tied to one student \u2014']].concat(students.map(x => [x.id, x.full_name])), r.student_id)
+    + fld('y-name','Or write the name / who it was paid to', r.student_name || r.paid_to) + '</div>'
+    + '<div class="grid g3">' + fld('y-inst','Institution / shop', r.institution)
+    + sel('y-mode','Mode', PAY_MODES, r.mode) + fld('y-ref','Reference / voucher no.', r.reference_no) + '</div>'
+    + fld('y-notes','Notes', r.notes, 'textarea'),
+    async () => {
+      if (!num(mv('y-amt'))){ toast('Enter an amount'); return; }
+      const sid = mv('y-student');
+      const picked = students.find(x => x.id === sid);
+      const row = { paid_on:mv('y-date') || todayISO(), amount:num(mv('y-amt')), category:mv('y-cat'),
+        student_id:sid || null, student_name:(picked ? picked.full_name : mv('y-name')),
+        paid_to:mv('y-name'), institution:mv('y-inst') || (picked ? picked.institution : ''),
+        mode:mv('y-mode'), reference_no:mv('y-ref'), notes:mv('y-notes') };
+      id ? await db.update('disbursements', id, row) : await db.insert('disbursements', row);
+      closeModal(); toast('Payment saved'); render();
+    });
+}
+
+async function exportLedger(){
+  if (typeof ExcelJS === 'undefined'){ toast('Excel library did not load'); return; }
+  const d = await fundData();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'LEB Kharadar';
+  const headRow = (ws, cells) => {
+    ws.addRow(cells);
+    ws.getRow(ws.rowCount).font = { bold:true };
+    ws.getRow(ws.rowCount).border = { bottom:{ style:'thin' } };
+  };
+  const totalRow = (ws, cells) => {
+    ws.addRow(cells);
+    const r = ws.getRow(ws.rowCount);
+    r.font = { bold:true };
+    r.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+  };
+
+  const s1 = wb.addWorksheet('Summary');
+  s1.columns = [{ width:34 }, { width:20 }];
+  s1.addRow(['Local Education Board \u2014 Kharadar']).font = { bold:true, size:14 };
+  s1.addRow(['Funds ledger \u2014 ' + d.R.label]).font = { bold:true };
+  s1.addRow([]);
+  headRow(s1, ['', 'Rs']);
+  s1.addRow(['Received from donors', d.totalIn]);
+  s1.addRow(['Delivered to students', d.totalOut]);
+  totalRow(s1, [d.balance < 0 ? 'Short by' : 'Still in hand', Math.abs(d.balance)]);
+  s1.addRow([]);
+  headRow(s1, ['Kind of support', 'Rs']);
+  Object.keys(d.byCat).sort((a,b) => d.byCat[b] - d.byCat[a])
+    .forEach(c => s1.addRow([FUND_CATS[c] || c, d.byCat[c]]));
+
+  const s2 = wb.addWorksheet('Receipts');
+  s2.columns = [{ width:14 },{ width:28 },{ width:22 },{ width:24 },{ width:16 },{ width:20 },{ width:14 }];
+  headRow(s2, ['Date','Donor','Contact','Given for','Mode','Reference','Amount']);
+  d.receipts.forEach(r => s2.addRow([r.received_on, r.donor_name, r.donor_contact,
+    (r.purpose === 'general' || !r.purpose) ? 'General fund' : (FUND_CATS[r.purpose] || r.purpose),
+    r.mode, r.reference_no, num(r.amount)]));
+  totalRow(s2, ['Total','','','','','', d.totalIn]);
+
+  const s3 = wb.addWorksheet('Payments');
+  s3.columns = [{ width:14 },{ width:26 },{ width:30 },{ width:24 },{ width:16 },{ width:14 },{ width:14 }];
+  headRow(s3, ['Date','Kind of support','Paid for / to','Institution','Mode','Source','Amount']);
+  d.payments.forEach(p => s3.addRow([p.paid_on, FUND_CATS[p.category] || p.category,
+    p.student_name || p.paid_to, p.institution || '', p.mode || '',
+    p.fromSheet ? 'Fee sheet' : 'Entered', num(p.amount)]));
+  totalRow(s3, ['Total','','','','','', d.totalOut]);
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    'LEB_Funds_' + d.R.label.replace(/\s+/g,'_') + '.xlsx');
+  toast('Ledger downloaded');
+}
+
+
+/* =====================================================================
+   Send by email or WhatsApp
+   Builds the message from the record, then hands it to the mail app or
+   to WhatsApp. Nothing leaves without you seeing it first.
+   ===================================================================== */
+function waNumber(raw){
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.slice(0,2) === '00') d = d.slice(2);
+  if (d.charAt(0) === '0') return '92' + d.slice(1);
+  if (d.slice(0,2) === '92') return d;
+  if (d.length === 10 && d.charAt(0) === '3') return '92' + d;
+  return d;
+}
+function openLink(url){
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function rememberContact(name, email, phone){
+  if (!email && !phone) return;
+  const all = await db.list('contacts');
+  const hit = all.find(c => (email && c.email === email) || (phone && c.phone === phone));
+  if (hit) await db.update('contacts', hit.id, { name:name || hit.name, email:email || hit.email, phone:phone || hit.phone });
+  else await db.insert('contacts', { name:name || '', email:email || '', phone:phone || '' });
+}
+const rs = n => 'Rs ' + money(n);
+
+async function shareContent(kind, id){
+  const sign = ['', 'Regards,', ME.name || 'Local Education Board, Kharadar'];
+  if (kind === 'program'){
+    const p = (await db.list('programs')).find(x => x.id === id);
+    return { subject:'Programme: ' + p.title,
+      body:['Assalam-o-Alaikum,','',
+        'Details of a programme from the Local Education Board, Kharadar:','',
+        'Programme: ' + p.title,
+        'Type: ' + p.type,
+        'Dates: ' + fmtDate(p.start_date) + (p.end_date ? ' to ' + fmtDate(p.end_date) : ''),
+        'Venue: ' + (p.venue || 'to be confirmed'),
+        'Target group: ' + (p.target_group || '\u2014'),
+        'Expected participants: ' + (p.expected_participants || '\u2014'),
+        p.collaboration ? 'In collaboration with: ' + p.collaboration : '',
+        '', p.description || ''].concat(sign).filter(x => x !== '').join('\n') };
+  }
+  if (kind === 'prf'){
+    const p = (await db.list('prf_requests')).find(x => x.id === id);
+    const lead = p.event_date ? daysBetween(p.submitted_on || todayISO(), p.event_date) : null;
+    return { subject:'Permission request: ' + p.program_name,
+      body:['Assalam-o-Alaikum,','',
+        'Please find our pre-programme permission request for the following:','',
+        'Programme: ' + p.program_name,
+        'Date: ' + (p.program_date || fmtDate(p.event_date)),
+        'Venue: ' + (p.venue || '\u2014'),
+        'Expected participants: ' + (p.expected_participants || '\u2014'),
+        'Event in charge: ' + (p.incharge_name || '\u2014')
+          + (p.incharge_contact ? ' (' + p.incharge_contact + ')' : ''),
+        lead === null ? '' : 'Submitted ' + lead + ' days before the programme date.',
+        '', 'The completed PRF is attached.','',
+        'We would be grateful for your approval.'].concat(sign).filter(x => x !== '').join('\n'),
+      attach:'Press the Word button first to download the PRF, then attach it to the email.' };
+  }
+  if (kind === 'cases'){
+    const rows = (await db.list('cases')).filter(c => c.meeting_date === id);
+    const asked = rows.reduce((s,c) => s + num(c.amount_requested), 0);
+    return { subject:'Case minutes \u2014 sitting of ' + fmtDate(id),
+      body:['Assalam-o-Alaikum,','',
+        'Cases heard at the Local Education Board, Kharadar, on ' + fmtDate(id) + ':','',
+        rows.map((c,i) => (i+1) + '. ' + c.applicant_name
+          + (c.student_name ? ' (for ' + c.student_name + ')' : '')
+          + '\n   Request: ' + (c.request_summary || '\u2014')
+          + (num(c.amount_requested) ? '\n   Amount: ' + rs(c.amount_requested) : '')
+          + '\n   Board recommendation: ' + (c.board_recommendation || '\u2014')
+          + '\n   Status: ' + c.decision).join('\n\n'),
+        '', 'Cases: ' + rows.length + (asked ? '. Total requested: ' + rs(asked) : '')]
+        .concat(sign).join('\n') };
+  }
+  if (kind === 'report'){
+    const d = repState.data;
+    const label = 'Quarter ' + d.q + ' ' + d.y;
+    return { subject:'Quarterly report \u2014 ' + label,
+      body:['Assalam-o-Alaikum,','',
+        'Summary for the Local Education Board, Kharadar, ' + label + ':','',
+        'Financial assistance disbursed: ' + rs(d.grand),
+        'Student entries supported: ' + d.beneficiaries,
+        'Cases heard: ' + d.caseStats.total + ' (approved ' + d.caseStats.approved
+          + ', forwarded ' + d.caseStats.forwarded + ', pending ' + d.caseStats.pending + ')',
+        'Total requested in cases: ' + rs(d.caseStats.requested),
+        'Programmes and activities: ' + d.qProgs.length,
+        '', 'Month by month:',
+        d.perMonth.map(m => '  ' + m.month + ': ' + rs(m.total) + ' across ' + m.students + ' entries').join('\n'),
+        '', 'The full report is attached.'].concat(sign).join('\n'),
+      attach:'Press Download Word first, then attach the report to the email.' };
+  }
+  if (kind === 'funds'){
+    const d = await fundData();
+    return { subject:'Funds statement \u2014 ' + d.R.label,
+      body:['Assalam-o-Alaikum,','',
+        'Funds statement for the Local Education Board, Kharadar, ' + d.R.label + ':','',
+        'Received from donors: ' + rs(d.totalIn),
+        'Delivered to students: ' + rs(d.totalOut),
+        (d.balance < 0 ? 'Short by: ' : 'Still in hand: ') + rs(Math.abs(d.balance)),
+        '', 'By kind of support:',
+        Object.keys(d.byCat).sort((a,b) => d.byCat[b] - d.byCat[a])
+          .map(c => '  ' + (FUND_CATS[c] || c) + ': ' + rs(d.byCat[c])).join('\n'),
+        '', 'The full ledger is attached.'].concat(sign).join('\n'),
+      attach:'Press Download ledger first, then attach it to the email.' };
+  }
+  return { subject:'', body:'' };
+}
+
+async function openShare(kind, id){
+  const c = await shareContent(kind, id);
+  const contacts = await db.list('contacts');
+  openModal('Send this',
+    (c.attach ? '<div class="note" style="margin-top:0">' + esc(c.attach) + '</div>' : '')
+    + '<div class="grid g3">'
+    + '<div class="field"><label for="sh-name">Who is this</label>'
+    + '<input id="sh-name" list="sh-names" placeholder="e.g. Council Secretary">'
+    + '<datalist id="sh-names">' + contacts.map(x => '<option value="' + esc(x.name || '') + '"></option>').join('') + '</datalist></div>'
+    + '<div class="field"><label for="sh-em">Email address</label>'
+    + '<input id="sh-em" type="email" list="sh-emails" placeholder="name@example.com" onchange="fillContact()">'
+    + '<datalist id="sh-emails">' + contacts.filter(x => x.email)
+        .map(x => '<option value="' + esc(x.email) + '">' + esc(x.name || '') + '</option>').join('') + '</datalist></div>'
+    + '<div class="field"><label for="sh-wa">WhatsApp number</label>'
+    + '<input id="sh-wa" list="sh-phones" placeholder="0300 1234567">'
+    + '<datalist id="sh-phones">' + contacts.filter(x => x.phone)
+        .map(x => '<option value="' + esc(x.phone) + '">' + esc(x.name || '') + '</option>').join('') + '</datalist></div></div>'
+    + '<p class="mini" style="margin:-6px 0 14px">Anyone you send to is remembered, so next time you can pick them from the list. '
+    + 'Leave the number blank to choose the chat inside WhatsApp.</p>'
+    + fld('sh-subj','Subject', c.subject)
+    + '<div class="field"><label for="sh-body">Message</label><textarea id="sh-body" style="min-height:240px">'
+    + esc(c.body) + '</textarea></div>'
+    + '<div class="send-row">'
+    + '<button class="btn send-wa" onclick="sendWhatsApp()">'
+    + '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">'
+    + '<path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2zm5.8 14.03c-.24.68-1.4 1.3-1.94 1.34-.5.04-.98.22-3.3-.69-2.77-1.09-4.53-3.92-4.67-4.1-.13-.18-1.11-1.48-1.11-2.83s.71-2 .96-2.28c.25-.27.55-.34.73-.34.18 0 .37 0 .53.01.17.01.4-.06.62.48.24.55.8 1.9.87 2.04.07.14.12.3.02.48-.09.18-.14.3-.28.46-.14.16-.29.36-.42.48-.14.14-.28.29-.12.57.16.27.72 1.18 1.54 1.91 1.06.94 1.95 1.23 2.22 1.37.27.14.43.12.59-.07.16-.18.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.6.75 1.87.89.27.14.46.2.53.32.07.11.07.64-.17 1.32z"/></svg>'
+    + ' WhatsApp</button>'
+    + '<button class="btn send-em" onclick="sendEmail()">'
+    + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">'
+    + '<rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M3 6l9 6.5L21 6"/></svg>'
+    + ' Open in email</button>'
+    + '<button class="btn ghost" onclick="copyShare()">Copy text</button></div>');
+}
+
+function fillContact(){
+  const em = mv('sh-em');
+  db.list('contacts').then(cs => {
+    const hit = cs.find(c => c.email === em);
+    if (!hit) return;
+    if (!mv('sh-name') && hit.name) $('sh-name').value = hit.name;
+    if (!mv('sh-wa') && hit.phone) $('sh-wa').value = hit.phone;
+  });
+}
+async function sendEmail(){
+  const to = mv('sh-em');
+  if (!to){ toast('Enter an email address first'); return; }
+  await rememberContact(mv('sh-name'), to, mv('sh-wa'));
+  openLink('mailto:' + encodeURIComponent(to)
+    + '?subject=' + encodeURIComponent(mv('sh-subj'))
+    + '&body=' + encodeURIComponent($('sh-body').value));
+  toast('Opening your email app');
+}
+async function sendWhatsApp(){
+  await rememberContact(mv('sh-name'), mv('sh-em'), mv('sh-wa'));
+  openLink('https://wa.me/' + waNumber(mv('sh-wa')) + '?text=' + encodeURIComponent($('sh-body').value));
+  toast('Opening WhatsApp');
+}
+function copyShare(){
+  const t = $('sh-body');
+  if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(() => toast('Copied'));
+  else { t.select(); document.execCommand('copy'); toast('Copied'); }
+}
+
 /* =====================================================================
    Import from Excel
    Reads any workbook, finds the header row, guesses the column mapping
@@ -1124,7 +1639,9 @@ async function pageCases(v){
     const list = byDate[d];
     const asked = list.reduce((s,c) => s + num(c.amount_requested), 0);
     h += '<div class="panel"><h2>' + fmtDate(d) + '<span class="mini">' + list.length + ' case' + (list.length>1?'s':'')
-      + (asked ? ' · Rs ' + money(asked) + ' requested' : '') + '</span></h2><div class="body flush"><div class="scroll">'
+      + (asked ? ' · Rs ' + money(asked) + ' requested' : '') + '</span>'
+      + '<button class="btn sm send" onclick="openShare(\'cases\',\'' + d + '\')">Send minutes</button></h2>'
+      + '<div class="body flush"><div class="scroll">'
       + '<table class="ledger"><thead><tr><th class="sn">#</th><th>Applicant</th><th>For</th><th>Request</th>'
       + '<th class="num">Amount</th><th>Board recommendation</th><th>Decision</th><th></th></tr></thead><tbody>'
       + list.map((c,i) => '<tr><td class="sn">' + esc(c.case_no || (i+1)) + '</td>'
@@ -1239,7 +1756,8 @@ async function pagePrograms(v){
         + '<td>' + esc(p.type) + '</td><td>' + (p.source === 'parent_body' ? 'Parent body' : 'LEB') + '</td>'
         + '<td>' + fmtDate(p.start_date) + (p.end_date ? '<div class="mini">to ' + fmtDate(p.end_date) + '</div>' : '') + '</td>'
         + '<td>' + esc(p.venue || '—') + '</td><td>' + prfCell + '</td><td>' + statusTag(p.status) + '</td>'
-        + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editProgram(\'' + p.id + '\')">Edit</button> '
+        + '<td style="width:1%;white-space:nowrap"><button class="btn sm send" onclick="openShare(\'program\',\'' + p.id + '\')">Send</button> '
+        + '<button class="btn sm ghost" onclick="editProgram(\'' + p.id + '\')">Edit</button> '
         + '<button class="btn sm danger" onclick="delRow(\'programs\',\'' + p.id + '\')">&times;</button></td></tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -1299,6 +1817,7 @@ async function pagePRF(v){
         + '<td>' + esc(p.incharge_name || '—') + '</td><td>' + statusTag(p.status) + '</td>'
         + '<td style="width:1%;white-space:nowrap">'
         + '<button class="btn sm gold" onclick="exportPRF(\'' + p.id + '\')">Word</button> '
+        + '<button class="btn sm send" onclick="openShare(\'prf\',\'' + p.id + '\')">Send</button> '
         + '<button class="btn sm ghost" onclick="editPRF(\'' + p.id + '\')">Edit</button> '
         + '<button class="btn sm danger" onclick="delRow(\'prf_requests\',\'' + p.id + '\')">&times;</button></td></tr>';
       }).join('') + '</tbody></table></div>';
@@ -1547,7 +2066,8 @@ async function pageReport(v){
     + [1,2,3,4].map(q => '<option value="' + q + '"' + (repState.quarter === q ? ' selected' : '') + '>Quarter ' + q + '</option>').join('')
     + '</select></div><div style="width:96px"><select onchange="repState.year=+this.value;render()">'
     + years.map(y => '<option' + (repState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
-    + '</select></div><button class="btn gold" onclick="exportReport()">Download Word</button>');
+    + '</select></div><button class="btn send" onclick="openShare(\'report\')">Send</button>'
+    + '<button class="btn gold" onclick="exportReport()">Download Word</button>');
 
   h += '<div class="stats"><div><div class="k">Disbursed this quarter</div><div class="v">Rs ' + money(d.grand) + '</div></div>'
     + '<div><div class="k">Student entries supported</div><div class="v">' + d.beneficiaries + '</div></div>'
