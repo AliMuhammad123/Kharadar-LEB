@@ -9,8 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+
 <style>
 :root{
   --ink:#0E3330; --ink-2:#15443F; --ink-3:#1D554E;
@@ -292,7 +291,35 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink-3);outline:none;b
 const CFG = (window.LEB_CONFIG || {});
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
+
+/* ---------------------------------------------------------------------
+   The Excel and Word builders are about 1.5 MB between them. They are
+   fetched the first time you actually export something, not on every
+   page load.
+   --------------------------------------------------------------------- */
+const _scripts = {};
+function loadScript(src){
+  if (_scripts[src]) return _scripts[src];
+  _scripts[src] = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => { delete _scripts[src]; reject(new Error('Could not load ' + src)); };
+    document.head.appendChild(el);
+  });
+  return _scripts[src];
+}
+async function needExcel(){
+  if (typeof ExcelJS !== 'undefined') return;
+  toast('Preparing the spreadsheet tools\u2026');
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+}
+async function needDocx(){
+  if (typeof docx !== 'undefined') return;
+  toast('Preparing the document tools\u2026');
+  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
+}
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const SHEETS = {
@@ -389,6 +416,29 @@ const db = {
     }
     const { data, error } = await sb.from(table).insert(row).select().single();
     if (error) throw error; return data;
+  },
+  // One round trip for many rows, instead of one per row.
+  async insertMany(table, rows){
+    if (!rows.length) return [];
+    if (LOCAL){
+      const out = rows.map(r => Object.assign({ id: uid(), created_at: new Date().toISOString() }, r));
+      mem[table] = mem[table].concat(out); saveLocal(); return out;
+    }
+    const { data, error } = await sb.from(table).insert(rows).select();
+    if (error) throw error; return data || [];
+  },
+  // One round trip for many parents, instead of one query per parent.
+  async listIn(table, key, values){
+    if (!values.length) return [];
+    if (LOCAL) return (mem[table] || []).filter(r => values.indexOf(r[key]) >= 0);
+    const { data, error } = await sb.from(table).select('*').in(key, values);
+    if (error) throw error; return data || [];
+  },
+  async removeMany(table, ids){
+    if (!ids.length) return;
+    if (LOCAL){ mem[table] = (mem[table] || []).filter(x => ids.indexOf(x.id) < 0); saveLocal(); return; }
+    const { error } = await sb.from(table).delete().in('id', ids);
+    if (error) throw error;
   },
   async update(table, id, patch){
     if (LOCAL){
@@ -645,10 +695,10 @@ async function pageFees(v){
          + SHEETS[k].label + ' <span class="mini">(' + bySheet(k).length + ')</span></button>').join('')
      + '</div>' + sheetTable(feeState.sheet, locked) + '</div></div>';
 
-  h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
-     + '<div><div class="k">Tuition — LEB share</div><div class="v">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
-     + '<div><div class="k">University &amp; others</div><div class="v">Rs ' + money(sheetTotal('university')) + '</div></div>'
-     + '<div><div class="k">Month total</div><div class="v">Rs ' + money(grand) + '</div></div></div>';
+  h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v" id="tot-pak">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
+     + '<div><div class="k">Tuition — LEB share</div><div class="v" id="tot-tui">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
+     + '<div><div class="k">University &amp; others</div><div class="v" id="tot-uni">Rs ' + money(sheetTotal('university')) + '</div></div>'
+     + '<div><div class="k">Month total</div><div class="v" id="tot-grand">Rs ' + money(grand) + '</div></div></div>';
   v.innerHTML = h;
 }
 function sheetTotal(k){
@@ -671,7 +721,8 @@ function sheetTable(k, locked){
   });
   h += '</tbody><tfoot><tr><td></td>'
     + cols.map(c => '<td' + (c.type === 'number' ? ' class="num"' : '') + '>'
-        + (c.k === totalKey(k) ? 'Rs ' + money(sheetTotal(k)) : (c.k === cols[0].k ? 'Total (' + rows.length + ' students)' : '')) + '</td>').join('')
+        + (c.k === totalKey(k) ? '<span id="sheet-total">Rs ' + money(sheetTotal(k)) + '</span>'
+           : (c.k === cols[0].k ? 'Total (' + rows.length + ' students)' : '')) + '</td>').join('')
     + (locked ? '' : '<td></td>') + '</tr></tfoot></table></div>';
   if (!locked) h += '<div style="padding:12px 16px;border-top:1px solid var(--line)">'
     + '<button class="btn ghost" onclick="addEntry()">Add row</button> '
@@ -698,14 +749,12 @@ async function createCycle(carry){
     const prev = all.find(c => (c.year*12+c.month) < (cycle.year*12+cycle.month));
     if (prev){
       const old = await db.list('fee_entries', { cycle_id: prev.id });
-      for (const e of old){
-        await db.insert('fee_entries', {
-          cycle_id:cycle.id, sheet:e.sheet, serial_no:e.serial_no, student_id:e.student_id || null,
-          student_name:e.student_name, school:e.school, class_grade:e.class_grade,
-          fee_amount:e.fee_amount, leb_contribution:e.leb_contribution, parent_contribution:e.parent_contribution,
-          full_fee:e.full_fee, tuition_teacher:e.tuition_teacher, status:e.status, result:'', remarks:''
-        });
-      }
+      await db.insertMany('fee_entries', old.map(e => ({
+        cycle_id:cycle.id, sheet:e.sheet, serial_no:e.serial_no, student_id:e.student_id || null,
+        student_name:e.student_name, school:e.school, class_grade:e.class_grade,
+        fee_amount:e.fee_amount, leb_contribution:e.leb_contribution, parent_contribution:e.parent_contribution,
+        full_fee:e.full_fee, tuition_teacher:e.tuition_teacher, status:e.status, result:'', remarks:''
+      })));
       toast('Carried forward ' + old.length + ' rows from ' + MONTHS[prev.month-1]);
     } else toast('No earlier sheet to carry forward from');
   }
@@ -723,9 +772,24 @@ async function addEntry(){
   render();
 }
 async function saveCell(id, key, val){
-  await db.update('fee_entries', id, { [key]: val });
-  const e = feeState.entries.find(x => x.id === id); if (e) e[key] = val;
-  if (key.includes('contribution') || key.includes('fee')) render();
+  const e = feeState.entries.find(x => x.id === id);
+  if (e) e[key] = val;
+  if (key.indexOf('contribution') >= 0 || key.indexOf('fee') >= 0) refreshTotals();
+  try{
+    await db.update('fee_entries', id, { [key]: val });
+  }catch(err){
+    toast('Could not save that change: ' + (err.message || err));
+  }
+}
+// Updates just the total figures, so typing never rebuilds the table
+// and the cursor stays where you put it.
+function refreshTotals(){
+  const put = (id, val) => { const el = $(id); if (el) el.textContent = 'Rs ' + money(val); };
+  put('sheet-total', sheetTotal(feeState.sheet));
+  put('tot-pak', sheetTotal('pak_progressive'));
+  put('tot-tui', sheetTotal('tuition'));
+  put('tot-uni', sheetTotal('university'));
+  put('tot-grand', feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0));
 }
 async function delEntry(id){
   await db.remove('fee_entries', id); toast('Row removed'); render();
@@ -741,12 +805,12 @@ async function addFromRegister(){
     async () => {
       const picked = [...document.querySelectorAll('.pick:checked')].map(i => i.value);
       let n = feeState.entries.filter(e => e.sheet === feeState.sheet).length;
-      for (const id of picked){
+      await db.insertMany('fee_entries', picked.map(id => {
         const s = students.find(x => x.id === id);
-        await db.insert('fee_entries', { cycle_id:feeState.cycle.id, sheet:feeState.sheet, serial_no:++n,
+        return { cycle_id:feeState.cycle.id, sheet:feeState.sheet, serial_no:++n,
           student_id:s.id, student_name:s.full_name, school:s.institution, class_grade:s.class_year,
-          status: feeState.sheet === 'pak_progressive' ? 'Paid' : '' });
-      }
+          status: feeState.sheet === 'pak_progressive' ? 'Paid' : '' };
+      }));
       closeModal(); toast(picked.length + ' added'); render();
     }, 'Add selected');
 }
@@ -755,7 +819,7 @@ async function addFromRegister(){
    Excel export — rebuilds the workbook in your existing layout
    ===================================================================== */
 async function exportWorkbook(){
-  if (typeof ExcelJS === 'undefined'){ toast('Excel library did not load — check your connection'); return; }
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
   const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LEB Kharadar'; wb.created = new Date();
@@ -917,18 +981,21 @@ async function fundData(){
   // Money paid out through the monthly fee sheets, so it is never typed twice.
   const sheetPayments = [];
   if (fundState.includeSheets){
-    for (const c of cycles){
+    const wanted = cycles.filter(c =>
+      inRange(c.year + '-' + String(c.month).padStart(2,'0') + '-01'));
+    const all = await db.listIn('fee_entries', 'cycle_id', wanted.map(c => c.id));
+    const byCycle = {};
+    all.forEach(e => { (byCycle[e.cycle_id] = byCycle[e.cycle_id] || []).push(e); });
+    for (const c of wanted){
       const day = c.year + '-' + String(c.month).padStart(2,'0') + '-01';
-      if (!inRange(day)) continue;
-      const entries = await db.list('fee_entries', { cycle_id:c.id });
+      const entries = byCycle[c.id] || [];
       for (const k in SHEET_CAT){
-        const amt = entries.filter(e => e.sheet === k)
-          .reduce((sum,e) => sum + num(e[totalKey(k)]), 0);
+        const rows = entries.filter(e => e.sheet === k);
+        const amt = rows.reduce((sum,e) => sum + num(e[totalKey(k)]), 0);
         if (amt > 0) sheetPayments.push({
           id:'sheet-' + c.id + '-' + k, paid_on:day, category:SHEET_CAT[k],
           paid_to:SHEETS[k].short + ' sheet, ' + MONTHS[c.month-1] + ' ' + c.year,
-          student_name:'', amount:amt, mode:'', fromSheet:true,
-          students:entries.filter(e => e.sheet === k).length
+          student_name:'', amount:amt, mode:'', fromSheet:true, students:rows.length
         });
       }
     }
@@ -1121,7 +1188,7 @@ async function editDisbursement(id){
 }
 
 async function exportLedger(){
-  if (typeof ExcelJS === 'undefined'){ toast('Excel library did not load'); return; }
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
   const d = await fundData();
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LEB Kharadar';
@@ -1433,6 +1500,7 @@ async function readImport(input){
   const body = $('imp-body');
   body.innerHTML = '<p class="mini">Reading ' + esc(file.name) + '\u2026</p>';
   try{
+    await needExcel();
     const buf = await file.arrayBuffer();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
@@ -1534,15 +1602,16 @@ async function runImport(){
   if (IMPORT.target === 'students'){
     const existing = (await db.list('students')).map(s => normHead(s.full_name));
     const skipDup = $('imp-skipdup') && $('imp-skipdup').checked;
-    let added = 0, skipped = 0;
+    let skipped = 0;
+    const fresh = [];
     for (const r of rows){
       if (skipDup && existing.indexOf(normHead(r.full_name)) >= 0){ skipped++; continue; }
-      await db.insert('students', {
-        full_name:r.full_name, guardian_name:r.guardian_name || '', institution:r.institution || '',
-        class_year:r.class_year || '', contact:r.contact || '', category:'school', status:'active', notes:''
-      });
-      existing.push(normHead(r.full_name)); added++;
+      existing.push(normHead(r.full_name));
+      fresh.push({ full_name:r.full_name, guardian_name:r.guardian_name || '', institution:r.institution || '',
+        class_year:r.class_year || '', contact:r.contact || '', category:'school', status:'active', notes:'' });
     }
+    await db.insertMany('students', fresh);
+    const added = fresh.length;
     closeModal();
     toast(added + ' student' + (added === 1 ? '' : 's') + ' added' + (skipped ? ', ' + skipped + ' already there' : ''));
     render(); return;
@@ -1550,13 +1619,12 @@ async function runImport(){
 
   const sheet = feeState.sheet;
   if ($('imp-replace') && $('imp-replace').checked){
-    for (const e of feeState.entries.filter(x => x.sheet === sheet)) await db.remove('fee_entries', e.id);
+    await db.removeMany('fee_entries', feeState.entries.filter(x => x.sheet === sheet).map(x => x.id));
     feeState.entries = feeState.entries.filter(x => x.sheet !== sheet);
   }
   let n = feeState.entries.filter(e => e.sheet === sheet).length;
-  for (const r of rows){
-    await db.insert('fee_entries', Object.assign({ cycle_id:feeState.cycle.id, sheet:sheet, serial_no:++n }, r));
-  }
+  await db.insertMany('fee_entries',
+    rows.map(r => Object.assign({ cycle_id:feeState.cycle.id, sheet:sheet, serial_no:++n }, r)));
   closeModal();
   toast(rows.length + ' row' + (rows.length === 1 ? '' : 's') + ' imported');
   render();
@@ -1715,7 +1783,7 @@ function simpleTable(rows){
 }
 async function saveDocx(children, filename, htmlFallback){
   try{
-    if (typeof docx === 'undefined') throw new Error('library not loaded');
+    await needDocx();
     const doc = new docx.Document({ sections:[{ properties:{}, children:children() }] });
     const blob = await docx.Packer.toBlob(doc);
     download(blob, filename);
@@ -2033,8 +2101,11 @@ async function buildQuarter(q, y){
   const [cycles, cases, programs] = await Promise.all([db.list('fee_cycles'), db.list('cases'), db.list('programs')]);
   const inQ = cycles.filter(c => c.year === y && months.includes(c.month)).sort((a,b) => a.month - b.month);
   const perMonth = [];
+  const allEntries = await db.listIn('fee_entries', 'cycle_id', inQ.map(c => c.id));
+  const grouped = {};
+  allEntries.forEach(e => { (grouped[e.cycle_id] = grouped[e.cycle_id] || []).push(e); });
   for (const c of inQ){
-    const es = await db.list('fee_entries', { cycle_id:c.id });
+    const es = grouped[c.id] || [];
     const t = k => es.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
     perMonth.push({ month:MONTHS[c.month-1], status:c.status, students:es.length,
       pak:t('pak_progressive'), tui:t('tuition'), uni:t('university'),
