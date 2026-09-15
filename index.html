@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="config.js" onerror="window.LEB_CONFIG_404=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --ease:cubic-bezier(.22,1,.36,1);
@@ -442,9 +444,25 @@ html:not(.js) .reveal{opacity:1;transform:none}
    the app simply runs in local mode.
    ===================================================================== */
 const CFG = (window.LEB_CONFIG || {});
+// Says precisely why the connection is not set up, rather than guessing.
+function configReason(){
+  let url = 'config.js';
+  try{ url = new URL('config.js', location.href).href; }catch(e){}
+  const link = '<a href="' + url + '" target="_blank" rel="noopener"><code>' + url + '</code></a>';
+  if (window.LEB_CONFIG_404)
+    return 'The browser asked for ' + link + ' and got nothing back. Open that link \u2014 if it '
+      + 'shows a 404, the file is not at that address. It must sit in the same folder as '
+      + 'index.html, and the name is case sensitive.';
+  if (!window.LEB_CONFIG)
+    return 'The file at ' + link + ' loaded, but it did not set <code>window.LEB_CONFIG</code>. '
+      + 'Open it and check the contents survived the upload.';
+  if (!CFG.url || !CFG.key)
+    return 'config.js loaded, but ' + (!CFG.url ? 'the <code>url</code>' : 'the <code>key</code>') + ' value is empty.';
+  return 'config.js loaded but the values did not pass the format check.';
+}
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.2';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -963,7 +981,7 @@ async function pageDash(v){
   let h = head('Overview', MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1));
 
   if (LOCAL) h += '<div class="note"><b>Local mode.</b> Records are saved in this browser only, so nobody else can see them and clearing your browser data wipes them. '
-    + 'This means <code>config.js</code> is missing, empty, or was not uploaded next to <code>index.html</code>.'
+    + configReason()
     + (canPersist ? '' : ' <b>This browser is blocking storage, so nothing will survive a refresh here.</b>') + '</div>';
 
   if (late.length) h += '<div class="note warn"><b>' + late.length + ' permission form' + (late.length>1?'s':'')
