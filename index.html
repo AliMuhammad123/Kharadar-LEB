@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LEB Kharadar — Board Workspace</title>
+<title>Aga Khan Education Board for Kharadar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -16,23 +16,24 @@
 
   --bg:#FFFFFF;
   --surface:#FFFFFF;
-  --subtle:#F7F8F8;
-  --hover:#F2F4F3;
-  --line:#E7EAE9;
-  --line-2:#D5DAD8;
-  --text:#14181A;
-  --text-2:#4B5654;
-  --muted:#77827F;
+  --subtle:#F6F9F7;
+  --hover:#EFF4F1;
+  --line:#E3EAE6;
+  --line-2:#CFDAD4;
+  --text:#10201A;
+  --text-2:#44554E;
+  --muted:#71837B;
 
-  --nav:#15191B;
-  --nav-2:#22282A;
-  --nav-text:#A7B2AF;
+  --nav:#0A2B21;
+  --nav-2:#134334;
+  --nav-3:#1B5A46;
+  --nav-text:#9DBCB0;
 
-  --accent:#12312A;
-  --accent-2:#1C4E42;
-  --ring:rgba(28,78,66,.14);
+  --accent:#0F4331;
+  --accent-2:#176147;
+  --ring:rgba(23,97,71,.15);
 
-  --green:#15704F;  --green-bg:#E8F3EE;
+  --green:#116B4A;  --green-bg:#E4F2EB;
   --gold:#8A6A1E;   --gold-bg:#FAF2E1;
   --red:#A32B22;    --red-bg:#FBEBE9;
   --blue:#1B4F7D;   --blue-bg:#EAF1F8;
@@ -47,8 +48,8 @@ body.dark{
   --bg:#0E1112; --surface:#14181A; --subtle:#181D1F; --hover:#1D2325;
   --line:#242B2D; --line-2:#333C3E;
   --text:#E9EEEC; --text-2:#AEB9B6; --muted:#8B9794;
-  --nav:#0A0D0E; --nav-2:#1A2123; --nav-text:#9AA6A3;
-  --accent:#1E5648; --accent-2:#27705C; --ring:rgba(39,112,92,.25);
+  --nav:#061812; --nav-2:#12332A; --nav-3:#1A4536; --nav-text:#94AEA4;
+  --accent:#1B5A44; --accent-2:#23745A; --ring:rgba(35,116,90,.25);
   --green:#4FBA8D; --green-bg:#11291F;
   --gold:#D2B173;  --gold-bg:#251E10;
   --red:#E58C83;   --red-bg:#2B1715;
@@ -75,9 +76,12 @@ a{color:var(--accent-2);text-underline-offset:2px}
 #app{display:none}
 .shell{display:flex;min-height:100vh;background:var(--bg)}
 .side{
-  width:238px;flex:0 0 238px;background:var(--nav);color:var(--nav-text);
+  width:238px;flex:0 0 238px;color:var(--nav-text);
+  background:linear-gradient(180deg,var(--nav-2) 0%,var(--nav) 34%,var(--nav) 100%);
   display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  border-right:1px solid rgba(255,255,255,.06);
 }
+.brand{border-bottom:1px solid rgba(255,255,255,.07)}
 .brand{padding:22px 20px 18px}
 .brand .mark{font-size:16px;font-weight:600;color:#fff;line-height:1.3;letter-spacing:-.02em}
 .brand .sub{font-size:12.5px;color:#7B8987;margin-top:3px;letter-spacing:-.005em}
@@ -104,10 +108,11 @@ a{color:var(--accent-2);text-underline-offset:2px}
   transition:background-color var(--t) var(--ease),color var(--t) var(--ease);
 }
 .nav a:hover{background:rgba(255,255,255,.06);color:#F0F4F3}
-.nav a.on{background:var(--nav-2);color:#fff;font-weight:500}
-.nav .pill{background:#3A4446;color:#E6EDEB;font-size:11.5px;font-weight:600;
+.nav a.on{background:var(--nav-3);color:#fff;font-weight:500;
+  box-shadow:inset 2px 0 0 #6FD3AC}
+.nav .pill{background:#1F6B52;color:#DFF3EA;font-size:11.5px;font-weight:600;
   border-radius:20px;padding:1px 7px;min-width:20px;text-align:center}
-.nav a.on .pill{background:#4C5A5C}
+.nav a.on .pill{background:#2A8365;color:#fff}
 .side-foot{padding:16px 20px 20px;border-top:1px solid rgba(255,255,255,.07);
   font-size:12.5px;color:#7B8987}
 .side-foot b{color:#EDF1F0;font-weight:500;display:block;font-size:14px}
@@ -263,6 +268,33 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
   width:30px;height:30px;border-radius:var(--r);transition:background-color var(--t) var(--ease)}
 .x:hover{background:var(--hover);color:var(--text)}
 
+.scopebar{padding:14px 16px;background:rgba(0,0,0,.2);
+  border-bottom:1px solid rgba(255,255,255,.07)}
+.scopebar label{font-size:11px;color:#7FA394;text-transform:uppercase;
+  letter-spacing:.08em;font-weight:600;margin:0 0 5px}
+.scopebar label + label{margin-top:11px}
+.scopebar select{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);
+  color:#EAF3EF;padding:7px 10px;font-size:13.5px}
+.scopebar select:hover{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.11)}
+.scopebar select:focus{box-shadow:0 0 0 3px rgba(111,211,172,.2);border-color:#6FD3AC}
+.scopebar select option{background:#0F3A2C;color:#EAF3EF}
+.scopebar .fixed{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:var(--r);padding:7px 10px;font-size:13.5px;color:#EAF3EF}
+
+/* ---- directives ---- */
+.panel.directive > h2{align-items:flex-start;gap:14px}
+.panel.directive > h2 > span:first-child{font-weight:600}
+.panel.directive.high{border-left:3px solid var(--red)}
+.d-tags{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.d-meta{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);
+  padding-top:4px}
+.d-meta span{position:relative}
+.d-meta span + span::before{content:"";position:absolute;left:-10px;top:8px;
+  width:3px;height:3px;border-radius:50%;background:var(--line-2)}
+.d-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;
+  padding-top:14px;border-top:1px solid var(--line)}
+.d-foot .actions{margin-left:auto}
+
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1A1F21;
   color:#fff;padding:12px 20px;border-radius:var(--r);font-size:14px;z-index:99;display:none;
   align-items:center;gap:16px;box-shadow:var(--sh-lg)}
@@ -272,7 +304,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 
 /* ============ auth ============ */
 #gate,#hold{min-height:100vh;display:flex;align-items:center;justify-content:center;
-  padding:20px;background:var(--subtle)}
+  padding:20px;background:var(--nav);position:relative;overflow:hidden}
+#gate::before,#hold::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(680px 460px at 18% 6%,rgba(111,211,172,.12),transparent 62%),
+             radial-gradient(620px 480px at 86% 96%,rgba(19,67,52,.85),transparent 60%)}
+.gate-card{position:relative}
 .gate-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
   padding:34px;width:100%;max-width:400px;box-shadow:var(--sh-md)}
 .gate-card h1{margin:0 0 5px;font-size:22px}
@@ -414,15 +450,15 @@ html:not(.js) .reveal{opacity:1;transform:none}
 <div id="app">
 <div class="topbar">
   <button class="burger" onclick="toggleSide()" aria-label="Menu">&#9776;</button>
-  <span class="tb-title">LEB Kharadar</span>
+  <span class="tb-title">AKEB Kharadar</span>
   <button class="tb-act" onclick="openPalette()">Go to&hellip;</button>
 </div>
 <div class="scrim" id="scrim" onclick="toggleSide(false)"></div>
 <div class="shell">
   <aside class="side">
     <div class="brand">
-      <div class="mark">Local Education<br>Board</div>
-      <div class="sub">Kharadar · Records &amp; Reporting</div>
+      <div class="mark">Aga Khan<br>Education Board</div>
+      <div class="sub" id="brand-sub">for Kharadar</div>
     </div>
     <div class="scopebar" id="scopebar"></div>
     <nav class="nav" id="nav"></nav>
@@ -478,7 +514,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v3.0';
+const APP_VERSION = 'v3.2';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -553,7 +589,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -790,6 +826,200 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 const mv = id => { const el = $(id); return el ? el.value.trim() : ''; };
 
 
+
+/* =====================================================================
+   Directives — what the parent body sends down to the areas
+   ---------------------------------------------------------------------
+   Guidelines, instructions, meetings and programmes are issued at
+   jurisdiction level, either to every area or to one. Areas acknowledge
+   them, so the parent body can see the message landed.
+   ===================================================================== */
+const JURISDICTION_NAME = 'Aga Khan Education Board for Kharadar';
+const DIRECTIVE_KINDS = {
+  guideline:    'Guideline',
+  instruction:  'Instruction',
+  meeting:      'Meeting',
+  programme:    'Programme',
+  announcement: 'Announcement'
+};
+function canIssueDirectives(){
+  return LOCAL || atJurisdiction() || ME.role === 'portfolio_head';
+}
+
+async function directiveData(){
+  const [all, reads] = await Promise.all([db.list('directives'), db.list('directive_reads')]);
+  const mine = all.filter(d => {
+    if (d.status === 'draft' && !canIssueDirectives()) return false;
+    if (d.status === 'archived') return false;
+    if (atJurisdiction() || LOCAL) return true;
+    if (!d.target_area) return true;
+    if (d.target_area === ME.area_id) return true;
+    return d.portfolio_id && d.portfolio_id === ME.portfolio_id;
+  }).sort((a,b) => (b.issued_on || '').localeCompare(a.issued_on || ''));
+  const readIds = reads.filter(r => r.profile_id === ME.id).map(r => r.directive_id);
+  return { list:mine, reads:reads, readIds:readIds };
+}
+
+async function pageDirectives(v){
+  const d = await directiveData();
+  const issuing = canIssueDirectives();
+  const unread = d.list.filter(x => d.readIds.indexOf(x.id) < 0);
+  counts.directives = issuing ? 0 : unread.length;
+  drawNav();
+
+  let h = head(issuing ? 'Directives' : 'From the board',
+    issuing
+      ? 'Guidelines, instructions, meetings and programmes issued to the areas. You can see who has acknowledged each one.'
+      : 'Issued by ' + JURISDICTION_NAME + '. Acknowledge each one so the board knows it reached you.',
+    issuing ? '<button class="btn" onclick="editDirective()">Issue a directive</button>' : '');
+
+  if (!issuing && unread.length)
+    h += '<div class="note"><b>' + unread.length + ' item' + (unread.length > 1 ? 's' : '')
+       + ' waiting for your acknowledgement.</b></div>';
+
+  if (!d.list.length){
+    h += '<div class="panel"><div class="empty"><p>'
+      + (issuing ? 'Nothing has been issued yet.' : 'Nothing has come down from the board yet.') + '</p>'
+      + (issuing ? '<button class="btn" onclick="editDirective()">Issue the first one</button>' : '')
+      + '</div></div>';
+    v.innerHTML = h; return;
+  }
+
+  h += d.list.map(x => {
+    const acks = d.reads.filter(r => r.directive_id === x.id);
+    const seen = d.readIds.indexOf(x.id) >= 0;
+    const to = x.target_area ? areaName(x.target_area) + ' only' : 'All areas';
+    return '<div class="panel directive' + (x.priority === 'high' ? ' high' : '') + '">'
+      + '<h2><span>' + esc(x.title) + '</span>'
+      + '<span class="d-tags">'
+      + '<span class="tag ' + (x.kind === 'instruction' ? 't-red' : x.kind === 'meeting' ? 't-blue'
+          : x.kind === 'programme' ? 't-green' : 't-gold') + '">' + esc(DIRECTIVE_KINDS[x.kind] || x.kind) + '</span>'
+      + '<span class="tag t-grey">' + esc(to) + '</span>'
+      + (x.portfolio_id ? '<span class="tag t-grey">' + esc(portName(x.portfolio_id)) + '</span>' : '')
+      + (x.status === 'draft' ? '<span class="tag t-gold">Draft</span>' : '')
+      + '</span></h2><div class="body">'
+      + (x.body ? '<p style="margin-top:0;white-space:pre-wrap">' + esc(x.body) + '</p>' : '')
+      + '<div class="d-meta">'
+      + '<span>Issued ' + fmtDate(x.issued_on) + '</span>'
+      + (x.event_date ? '<span>' + (x.kind === 'meeting' ? 'Meets ' : 'On ') + fmtDate(x.event_date)
+          + (x.event_time ? ' at ' + esc(x.event_time) : '') + '</span>' : '')
+      + (x.venue ? '<span>' + esc(x.venue) + '</span>' : '')
+      + (x.respond_by ? '<span>Respond by ' + fmtDate(x.respond_by) + '</span>' : '')
+      + '</div>'
+      + '<div class="d-foot">'
+      + (issuing
+          ? '<span class="mini">' + acks.length + ' acknowledgement' + (acks.length === 1 ? '' : 's')
+            + (acks.length ? ': ' + esc(acks.map(a => areaName(a.area_id)).filter((x2,i,arr) => arr.indexOf(x2) === i).join(', ')) : '')
+            + '</span>'
+            + '<span class="actions">'
+            + '<button class="btn sm send" onclick="openShare(\'directive\',\'' + x.id + '\')">Send</button> '
+            + '<button class="btn sm ghost" onclick="editDirective(\'' + x.id + '\')">Edit</button> '
+            + '<button class="btn sm danger" onclick="delRow(\'directives\',\'' + x.id + '\')">&times;</button></span>'
+          : (seen
+              ? '<span class="tag t-green">Acknowledged</span>'
+              : '<button class="btn sm" onclick="ackDirective(\'' + x.id + '\')">Acknowledge</button>')
+            + '<span class="actions"><button class="btn sm send" onclick="openShare(\'directive\',\'' + x.id + '\')">Send on</button></span>')
+      + '</div></div></div>';
+  }).join('');
+  v.innerHTML = h;
+}
+
+async function ackDirective(id){
+  await db.insert('directive_reads', {
+    directive_id:id, profile_id:ME.id, area_id:ME.area_id || null, note:''
+  });
+  toast('Acknowledged'); render();
+}
+
+async function editDirective(id){
+  const x = id ? (await db.list('directives')).find(y => y.id === id)
+               : { kind:'guideline', status:'published', priority:'normal', issued_on:todayISO() };
+  const areaOpts = [['','Every area']].concat(ORG.areas.map(a => [a.id, a.name + ' only']));
+  openModal(id ? 'Edit directive' : 'Issue a directive',
+    '<div class="grid g3">'
+    + sel('v-kind','Kind', Object.keys(DIRECTIVE_KINDS).map(k => [k, DIRECTIVE_KINDS[k]]), x.kind)
+    + sel('v-target','Send to', areaOpts, x.target_area || '')
+    + sel('v-port','Portfolio', portfolioOptions(), x.portfolio_id || '') + '</div>'
+    + fld('v-title','Title', x.title)
+    + fld('v-body','Details', x.body, 'textarea')
+    + '<div class="grid g3">'
+    + fld('v-date','Date (meeting or programme)', x.event_date, 'date')
+    + fld('v-time','Time', x.event_time)
+    + fld('v-venue','Venue', x.venue) + '</div>'
+    + '<div class="grid g3">'
+    + fld('v-respond','Respond by', x.respond_by, 'date')
+    + sel('v-priority','Priority', [['normal','Normal'],['high','Needs attention']], x.priority)
+    + sel('v-status','Status', [['published','Published'],['draft','Draft'],['archived','Archived']], x.status)
+    + '</div>',
+    async () => {
+      if (!mv('v-title')){ toast('A title is required'); return; }
+      const row = { kind:mv('v-kind'), title:mv('v-title'), body:mv('v-body'),
+        target_area:mv('v-target') || null, portfolio_id:mv('v-port') || null,
+        event_date:mv('v-date') || null, event_time:mv('v-time'), venue:mv('v-venue'),
+        respond_by:mv('v-respond') || null, priority:mv('v-priority'), status:mv('v-status'),
+        issued_on:x.issued_on || todayISO() };
+      if (!id && !LOCAL) row.created_by = ME.id;
+      id ? await db.update('directives', id, row) : await db.insert('directives', row);
+      closeModal(); toast(id ? 'Updated' : 'Issued'); render();
+    }, id ? 'Save' : 'Issue');
+}
+
+/* =====================================================================
+   All areas — what each area has been doing, seen from the parent body
+   ===================================================================== */
+async function pageAreas(v){
+  const [students, cases, programs, cycles, directives, reads] = await Promise.all([
+    db.list('students'), db.list('cases'), db.list('programs'),
+    db.list('fee_cycles'), db.list('directives'), db.list('directive_reads')
+  ]);
+  const now = new Date(), m = now.getMonth()+1, y = now.getFullYear();
+  const live = directives.filter(d => d.status === 'published');
+
+  const rows = [];
+  for (const a of ORG.areas){
+    const cyc = cycles.find(c => c.area_id === a.id && c.month === m && c.year === y);
+    const entries = cyc ? await db.list('fee_entries', { cycle_id:cyc.id }) : [];
+    const spent = entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
+    const due = live.filter(d => !d.target_area || d.target_area === a.id);
+    const done = due.filter(d => reads.some(r => r.directive_id === d.id && r.area_id === a.id));
+    rows.push({
+      area:a,
+      students: students.filter(x => x.area_id === a.id).length,
+      pending:  cases.filter(x => x.area_id === a.id && (x.decision === 'pending' || x.decision === 'deferred')).length,
+      programs: programs.filter(x => x.area_id === a.id &&
+                  ['planned','prf_pending','approved','ongoing'].indexOf(x.status) >= 0).length,
+      sheet: cyc ? cyc.status : null,
+      spent: spent,
+      due: due.length, done: done.length
+    });
+  }
+
+  let h = head('All areas', 'What each area has recorded this month, and whether the board\u2019s directives have been acknowledged.');
+  h += '<div class="panel"><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Area</th><th class="num">Students</th><th class="num">' + MONTHS[m-1] + ' disbursed</th>'
+    + '<th>Fee sheet</th><th class="num">Cases open</th><th class="num">Programmes</th>'
+    + '<th>Directives seen</th><th></th></tr></thead><tbody>'
+    + rows.map(r => '<tr><td><b>' + esc(r.area.name) + '</b></td>'
+      + '<td class="num">' + r.students + '</td>'
+      + '<td class="num">' + (r.spent ? 'Rs ' + money(r.spent) : '\u2014') + '</td>'
+      + '<td>' + (r.sheet ? statusTag(r.sheet) : '<span class="tag t-red">Not started</span>') + '</td>'
+      + '<td class="num">' + (r.pending || '\u2014') + '</td>'
+      + '<td class="num">' + (r.programs || '\u2014') + '</td>'
+      + '<td>' + (r.due
+          ? '<span class="tag ' + (r.done === r.due ? 't-green' : r.done ? 't-gold' : 't-red') + '">'
+            + r.done + ' of ' + r.due + '</span>'
+          : '<span class="mini">none</span>') + '</td>'
+      + '<td style="width:1%"><button class="btn sm ghost" onclick="setScope(\'area\',\'' + r.area.id + '\');go(\'dash\')">Open</button></td>'
+      + '</tr>').join('')
+    + '</tbody><tfoot><tr><td>Jurisdiction</td>'
+    + '<td class="num">' + rows.reduce((s,r) => s + r.students, 0) + '</td>'
+    + '<td class="num">Rs ' + money(rows.reduce((s,r) => s + r.spent, 0)) + '</td><td></td>'
+    + '<td class="num">' + rows.reduce((s,r) => s + r.pending, 0) + '</td>'
+    + '<td class="num">' + rows.reduce((s,r) => s + r.programs, 0) + '</td><td></td><td></td></tr></tfoot>'
+    + '</table></div></div></div>';
+  v.innerHTML = h;
+}
+
 /* =====================================================================
    Interface: theme, mobile drawer, command palette, table tools,
    keyboard entry, undo, and a saving indicator.
@@ -873,6 +1103,9 @@ function paletteItems(){
     { label:'Import students from Excel',    group:'Register', run:() => { go('students'); setTimeout(() => openImport('students'), 60); } },
     { label:'Download this month as Excel',  group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && exportWorkbook(), 400); } },
     { label:'Import rows from Excel',        group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && openImport('fees'), 400); } },
+    { label:'Issue a directive',             group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
+    { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
+    { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
     { label:'Add a programme',               group:'Programmes', run:() => { go('programs'); setTimeout(editProgram, 60); } },
     { label:'New permission form',           group:'PRF', run:() => { go('prf'); setTimeout(editPRF, 60); } },
     { label:'Send the quarterly report',     group:'Report', run:() => { go('report'); setTimeout(() => openShare('report'), 500); } },
@@ -1021,7 +1254,9 @@ function animateIn(root){
    Router
    ===================================================================== */
 const PAGES = [
-  { id:'dash',     label:'Overview'          },
+  { id:'dash',       label:'Overview'        },
+  { id:'areas',      label:'All areas', jurisdictionOnly:true },
+  { id:'directives', label:'Directives'      },
   { id:'fees',     label:'Fee sheets'        },
   { id:'funds',    label:'Funds & donors', financeOnly:true },
   { id:'students', label:'Student register'  },
@@ -1035,6 +1270,10 @@ let page = 'dash';
 const counts = {};
 
 function drawScopeBar(){
+  const sub = $('brand-sub');
+  if (sub) sub.textContent = (SCOPE.area === 'jurisdiction' || SCOPE.area === 'all')
+    ? 'for Kharadar \u00b7 parent body'
+    : areaName(SCOPE.area) + ' area board';
   const box = $('scopebar');
   if (!box) return;
   let h = '';
@@ -1090,12 +1329,14 @@ function initScope(){
 }
 
 function drawNav(){
+  const label = p => (p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label;
   $('nav').innerHTML = PAGES.filter(p =>
       !(p.financeOnly && !canFinance()) &&
-      !(p.peopleOnly && (LOCAL || !canManagePeople()))
+      !(p.peopleOnly && (LOCAL || !canManagePeople())) &&
+      !(p.jurisdictionOnly && !(LOCAL || atJurisdiction()))
     ).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
-    + '<span>' + p.label + '</span>'
+    + '<span>' + label(p) + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
 }
 function go(id){ page = id; drawNav(); render(); window.scrollTo(0,0); toggleSide(false); }
@@ -1105,6 +1346,8 @@ async function render(){
   v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
   try{
     if (page === 'dash')      await pageDash(v);
+    if (page === 'areas')     await pageAreas(v);
+    if (page === 'directives')await pageDirectives(v);
     if (page === 'fees')      await pageFees(v);
     if (page === 'funds'){
       if (!canFinance()){
@@ -1903,6 +2146,21 @@ const rs = n => 'Rs ' + money(n);
 
 async function shareContent(kind, id){
   const sign = ['', 'Regards,', ME.name || 'Local Education Board, Kharadar'];
+  if (kind === 'directive'){
+    const x = (await db.list('directives')).find(y => y.id === id);
+    return { subject:(DIRECTIVE_KINDS[x.kind] || 'Directive') + ': ' + x.title,
+      body:['Assalam-o-Alaikum,','',
+        'From ' + JURISDICTION_NAME + ':','',
+        (DIRECTIVE_KINDS[x.kind] || 'Directive') + ' \u2014 ' + x.title,
+        'For: ' + (x.target_area ? areaName(x.target_area) + ' area' : 'all areas'),
+        x.portfolio_id ? 'Portfolio: ' + portName(x.portfolio_id) : '',
+        '', x.body || '',
+        x.event_date ? '' : null,
+        x.event_date ? 'Date: ' + fmtDate(x.event_date) + (x.event_time ? ' at ' + x.event_time : '') : null,
+        x.venue ? 'Venue: ' + x.venue : null,
+        x.respond_by ? 'Please respond by ' + fmtDate(x.respond_by) : null
+      ].filter(t => t !== null && t !== '').join('\n') + '\n\nRegards,\n' + (ME.name || JURISDICTION_NAME) };
+  }
   if (kind === 'program'){
     const p = (await db.list('programs')).find(x => x.id === id);
     return { subject:'Programme: ' + p.title,
