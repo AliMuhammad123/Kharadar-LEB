@@ -81,6 +81,21 @@ a{color:var(--accent-2);text-underline-offset:2px}
 .brand{padding:22px 20px 18px}
 .brand .mark{font-size:16px;font-weight:600;color:#fff;line-height:1.3;letter-spacing:-.02em}
 .brand .sub{font-size:12.5px;color:#7B8987;margin-top:3px;letter-spacing:-.005em}
+.scopebar{padding:0 14px 14px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:8px}
+.scopebar label{font-size:11px;color:#6F7D7B;margin:10px 0 4px;font-weight:500;
+  text-transform:uppercase;letter-spacing:.06em}
+.scopebar select{
+  background:var(--nav-2);border:1px solid rgba(255,255,255,.09);color:#E8EEEC;
+  border-radius:var(--r);padding:8px 10px;font-size:13.5px;width:100%;
+}
+.scopebar select:hover{border-color:rgba(255,255,255,.22)}
+.scopebar select:focus{border-color:#5C6F6B;box-shadow:none}
+.scopebar .fixed{padding:8px 10px;background:var(--nav-2);border-radius:var(--r);
+  font-size:13.5px;color:#E8EEEC;border:1px solid rgba(255,255,255,.07)}
+.scope-tag{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);
+  background:var(--subtle);border:1px solid var(--line);border-radius:20px;padding:4px 12px}
+.scope-tag b{color:var(--text);font-weight:500}
+
 .nav{padding:6px 10px;flex:1;overflow:auto}
 .nav a{
   display:flex;justify-content:space-between;align-items:center;gap:8px;
@@ -409,6 +424,7 @@ html:not(.js) .reveal{opacity:1;transform:none}
       <div class="mark">Local Education<br>Board</div>
       <div class="sub">Kharadar · Records &amp; Reporting</div>
     </div>
+    <div class="scopebar" id="scopebar"></div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       <b id="who">—</b>
@@ -462,7 +478,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v3.0';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -499,7 +515,8 @@ const SHEETS = {
   university:      { label:'University & others',               short:'University & others' }
 };
 
-let sb = null, LOCAL = true, ME = { id:null, name:'', role:'admin' };
+let sb = null, LOCAL = true, ME = { id:null, name:'', role:'chairperson',
+  area_id:null, portfolio_id:null, finance_access:true };
 let BOOT_ERROR = '';
 
 if (SUPABASE_URL && SUPABASE_ANON_KEY){
@@ -536,7 +553,97 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios'];
+
+/* ---------------------------------------------------------------------
+   The organisation.
+   The board runs at two levels. Records with no area belong to the
+   jurisdiction; everything else belongs to one of the four areas.
+   Portfolios exist at both levels.
+   --------------------------------------------------------------------- */
+const DEFAULT_AREAS = [
+  { id:'kharadar', name:'Kharadar', sort:1 }, { id:'korangi', name:'Korangi', sort:2 },
+  { id:'clifton',  name:'Clifton',  sort:3 }, { id:'laasi',   name:'Laasi',   sort:4 }
+];
+const DEFAULT_PORTFOLIOS = [
+  { id:'english',    name:'English Language',   sort:1 },
+  { id:'ace',        name:'ACE Classes',        sort:2 },
+  { id:'university', name:'University Matters', sort:3 },
+  { id:'library',    name:'Library',            sort:4 },
+  { id:'parwaz',     name:'Parwaz',             sort:5 }
+];
+const ORG = { areas:DEFAULT_AREAS.slice(), portfolios:DEFAULT_PORTFOLIOS.slice() };
+const areaName = id => id ? ((ORG.areas.find(a => a.id === id) || {}).name || id) : 'Jurisdiction';
+const portName = id => id ? ((ORG.portfolios.find(p => p.id === id) || {}).name || id) : 'General';
+
+const ROLES = [
+  ['chairperson',     'Chairperson'],
+  ['secretary',       'Secretary'],
+  ['portfolio_head',  'Portfolio head'],
+  ['portfolio_member','Portfolio member'],
+  ['area_head',       'Area convenor'],
+  ['area_member',     'Area member'],
+  ['admin',           'System admin'],
+  ['pending',         'Waiting'],
+  ['blocked',         'Blocked']
+];
+const roleName = r => ((ROLES.find(x => x[0] === r) || [])[1] || r);
+
+/* Which records carry a portfolio. */
+const PORTFOLIO_TABLES = ['programs','prf_requests','donations','disbursements','quarterly_reports'];
+/* Which records carry an area. */
+const AREA_TABLES = ['students','fee_cycles','cases','programs','prf_requests',
+                     'quarterly_reports','donations','disbursements'];
+
+/* SCOPE.area: 'all' | 'jurisdiction' | an area id.  SCOPE.portfolio: 'all' | a portfolio id. */
+let SCOPE = { area:'kharadar', portfolio:'all' };
+
+const JURIS_ROLES  = ['admin','chairperson','secretary'];
+const FINANCE_ROLES = ['admin','chairperson','secretary','area_head'];
+
+function atJurisdiction(){
+  return JURIS_ROLES.indexOf(ME.role) >= 0
+    || (['portfolio_head','portfolio_member'].indexOf(ME.role) >= 0 && !ME.area_id);
+}
+function canFinance(){ return FINANCE_ROLES.indexOf(ME.role) >= 0 || !!ME.finance_access; }
+function canManagePeople(){ return JURIS_ROLES.indexOf(ME.role) >= 0; }
+function canDelete(){ return FINANCE_ROLES.indexOf(ME.role) >= 0; }
+function lockedToPortfolio(){
+  return ['portfolio_head','portfolio_member'].indexOf(ME.role) >= 0 && !!ME.portfolio_id;
+}
+
+/* Does a record fall inside what is on screen right now? */
+function inScope(row, table){
+  if (AREA_TABLES.indexOf(table) >= 0){
+    const a = SCOPE.area;
+    if (a === 'jurisdiction'){ if (row.area_id) return false; }
+    else if (a !== 'all'){ if (row.area_id && row.area_id !== a) return false; }
+  }
+  if (SCOPE.portfolio !== 'all' && PORTFOLIO_TABLES.indexOf(table) >= 0){
+    if ((row.portfolio_id || null) !== SCOPE.portfolio) return false;
+  }
+  return true;
+}
+/* Read a table through the current scope. */
+async function sList(table, filter){
+  const rows = await db.list(table, filter);
+  return rows.filter(r => inScope(r, table));
+}
+/* Attach the current scope to something being created. */
+function stampArea(row){
+  const a = SCOPE.area;
+  return Object.assign({ area_id: (a === 'jurisdiction' || a === 'all') ? null : a }, row);
+}
+function defaultPortfolio(){
+  if (lockedToPortfolio()) return ME.portfolio_id;
+  return SCOPE.portfolio === 'all' ? '' : SCOPE.portfolio;
+}
+function portfolioOptions(){
+  const list = lockedToPortfolio()
+    ? ORG.portfolios.filter(p => p.id === ME.portfolio_id)
+    : ORG.portfolios;
+  return [['','General board work']].concat(list.map(p => [p.id, p.name]));
+}
 const STORE_KEY = 'leb-kharadar';
 const mem = {};
 TABLES.forEach(t => mem[t] = []);
@@ -916,19 +1023,77 @@ function animateIn(root){
 const PAGES = [
   { id:'dash',     label:'Overview'          },
   { id:'fees',     label:'Fee sheets'        },
-  { id:'funds',    label:'Funds & donors'    },
+  { id:'funds',    label:'Funds & donors', financeOnly:true },
   { id:'students', label:'Student register'  },
   { id:'cases',    label:'Tuesday cases'     },
   { id:'programs', label:'Programmes'        },
   { id:'prf',      label:'Permission forms'  },
   { id:'report',   label:'Quarterly report'  },
-  { id:'members',  label:'Board members', adminOnly:true }
+  { id:'members',  label:'Board members', peopleOnly:true }
 ];
 let page = 'dash';
 const counts = {};
 
+function drawScopeBar(){
+  const box = $('scopebar');
+  if (!box) return;
+  let h = '';
+
+  if (atJurisdiction()){
+    const opts = [['all','All areas (roll-up)'], ['jurisdiction','Jurisdiction level']]
+      .concat(ORG.areas.map(a => [a.id, a.name]));
+    h += '<label for="sc-area">Working on</label>'
+      + '<select id="sc-area" onchange="setScope(\'area\',this.value)">'
+      + opts.map(o => '<option value="' + o[0] + '"' + (SCOPE.area === o[0] ? ' selected' : '') + '>'
+          + esc(o[1]) + '</option>').join('') + '</select>';
+  } else {
+    h += '<label>Working on</label><div class="fixed">' + esc(areaName(ME.area_id)) + '</div>';
+  }
+
+  if (lockedToPortfolio()){
+    h += '<label>Portfolio</label><div class="fixed">' + esc(portName(ME.portfolio_id)) + '</div>';
+  } else {
+    const opts = [['all','All portfolios']].concat(ORG.portfolios.map(p => [p.id, p.name]));
+    h += '<label for="sc-port">Portfolio</label>'
+      + '<select id="sc-port" onchange="setScope(\'portfolio\',this.value)">'
+      + opts.map(o => '<option value="' + o[0] + '"' + (SCOPE.portfolio === o[0] ? ' selected' : '') + '>'
+          + esc(o[1]) + '</option>').join('') + '</select>';
+  }
+  box.innerHTML = h;
+}
+function setScope(what, value){
+  SCOPE[what] = value;
+  try{ window.localStorage.setItem('leb-scope', JSON.stringify(SCOPE)); }catch(e){}
+  feeState.cycle = null;
+  drawScopeBar(); render();
+}
+function scopeLabel(){
+  const a = SCOPE.area === 'all' ? 'All areas'
+          : SCOPE.area === 'jurisdiction' ? 'Jurisdiction' : areaName(SCOPE.area);
+  return a + (SCOPE.portfolio === 'all' ? '' : ' \u00b7 ' + portName(SCOPE.portfolio));
+}
+function initScope(){
+  // Area people are pinned to their own area; jurisdiction people may roam.
+  if (!atJurisdiction() && ME.area_id) SCOPE.area = ME.area_id;
+  else {
+    let saved = null;
+    try{ saved = JSON.parse(window.localStorage.getItem('leb-scope') || 'null'); }catch(e){}
+    if (saved && saved.area) SCOPE.area = saved.area;
+    else SCOPE.area = atJurisdiction() ? 'jurisdiction' : 'kharadar';
+  }
+  if (lockedToPortfolio()) SCOPE.portfolio = ME.portfolio_id;
+  else {
+    let saved = null;
+    try{ saved = JSON.parse(window.localStorage.getItem('leb-scope') || 'null'); }catch(e){}
+    SCOPE.portfolio = (saved && saved.portfolio) || 'all';
+  }
+}
+
 function drawNav(){
-  $('nav').innerHTML = PAGES.filter(p => !(p.adminOnly && (LOCAL || ME.role !== 'admin'))).map(p =>
+  $('nav').innerHTML = PAGES.filter(p =>
+      !(p.financeOnly && !canFinance()) &&
+      !(p.peopleOnly && (LOCAL || !canManagePeople()))
+    ).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
     + '<span>' + p.label + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
@@ -941,7 +1106,15 @@ async function render(){
   try{
     if (page === 'dash')      await pageDash(v);
     if (page === 'fees')      await pageFees(v);
-    if (page === 'funds')     await pageFunds(v);
+    if (page === 'funds'){
+      if (!canFinance()){
+        v.innerHTML = '<div class="note warn"><b>Finance is not open to your role.</b><br>'
+          + 'Receipts and payments are visible to the chairperson, the secretary, area convenors, '
+          + 'and anyone the chair has given finance access.</div>';
+        return;
+      }
+      await pageFunds(v);
+    }
     if (page === 'students')  await pageStudents(v);
     if (page === 'cases')     await pageCases(v);
     if (page === 'programs')  await pagePrograms(v);
@@ -966,7 +1139,7 @@ function head(title, sub, actions){
 async function pageDash(v){
   const now = new Date();
   const [cycles, cases, programs, prfs] = await Promise.all([
-    db.list('fee_cycles'), db.list('cases'), db.list('programs'), db.list('prf_requests')
+    sList('fee_cycles'), sList('cases'), sList('programs'), sList('prf_requests')
   ]);
   const cur = cycles.find(c => c.month === now.getMonth()+1 && c.year === now.getFullYear());
   let entries = cur ? await db.list('fee_entries', { cycle_id: cur.id }) : [];
@@ -978,7 +1151,9 @@ async function pageDash(v){
 
   const late = prfs.filter(p => p.status === 'draft' && p.event_date && daysBetween(todayISO(), p.event_date) < 15);
 
-  let h = head('Overview', MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1));
+  let h = head(scopeTitle(),
+    MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1)
+    + ' · ' + scopeLabel());
 
   if (LOCAL) h += '<div class="note"><b>Local mode.</b> Records are saved in this browser only, so nobody else can see them and clearing your browser data wipes them. '
     + configReason()
@@ -993,6 +1168,34 @@ async function pageDash(v){
     + '<div><div class="k">Cases awaiting a decision</div><div class="v">' + pending.length + '</div></div>'
     + '<div><div class="k">Programmes running or planned</div><div class="v">' + live.length + '</div></div>'
     + '</div><div style="height:20px"></div>';
+
+  if (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction'){
+    const allProgs = await db.list('programs'), allCases = await db.list('cases');
+    const byArea = {};
+    ORG.areas.forEach(a => byArea[a.id] = { progs:0, cases:0 });
+    allProgs.forEach(p => { if (p.area_id && byArea[p.area_id]) byArea[p.area_id].progs++; });
+    allCases.forEach(c => { if (c.area_id && byArea[c.area_id]) byArea[c.area_id].cases++; });
+    h += '<div class="panel"><h2>Across the areas</h2><div class="body flush"><table class="ledger">'
+      + '<thead><tr><th>Area</th><th class="num">Programmes</th><th class="num">Cases</th><th></th></tr></thead><tbody>'
+      + ORG.areas.map(a => '<tr><td>' + esc(a.name) + '</td>'
+          + '<td class="num">' + byArea[a.id].progs + '</td>'
+          + '<td class="num">' + byArea[a.id].cases + '</td>'
+          + '<td style="width:1%"><button class="btn sm ghost" onclick="setScope(\'area\',\'' + a.id + '\')">Open</button></td></tr>').join('')
+      + '</tbody></table></div></div>';
+  }
+
+  if (SCOPE.portfolio === 'all'){
+    const byPort = {};
+    ORG.portfolios.forEach(p => byPort[p.id] = 0);
+    programs.forEach(p => { if (p.portfolio_id && byPort[p.portfolio_id] !== undefined) byPort[p.portfolio_id]++; });
+    if (Object.keys(byPort).some(k => byPort[k] > 0)){
+      h += '<div class="panel"><h2>Portfolios</h2><div class="body flush"><table class="ledger"><tbody>'
+        + ORG.portfolios.map(p => '<tr><td>' + esc(p.name) + '</td>'
+            + '<td class="num">' + byPort[p.id] + (byPort[p.id] === 1 ? ' programme' : ' programmes') + '</td>'
+            + '<td style="width:1%"><button class="btn sm ghost" onclick="setScope(\'portfolio\',\'' + p.id + '\')">Open</button></td></tr>').join('')
+        + '</tbody></table></div></div>';
+    }
+  }
 
   h += '<div class="grid g2">';
   h += '<div class="panel" style="margin:0"><h2>Latest cases</h2><div class="body flush">'
@@ -1010,6 +1213,12 @@ async function pageDash(v){
     + '</div></div>';
   h += '</div>';
   v.innerHTML = h;
+}
+function scopeTitle(){
+  if (SCOPE.portfolio !== 'all') return portName(SCOPE.portfolio);
+  if (SCOPE.area === 'all') return 'Local Education Board';
+  if (SCOPE.area === 'jurisdiction') return 'Jurisdiction';
+  return areaName(SCOPE.area) + ' Education Board';
 }
 function decisionTag(d){
   const m = { pending:['t-gold','Pending'], approved:['t-green','Approved'], rejected:['t-red','Rejected'],
@@ -1057,7 +1266,7 @@ const COLS = {
 const totalKey = s => s === 'pak_progressive' ? 'fee_amount' : 'leb_contribution';
 
 async function loadCycle(){
-  const all = await db.list('fee_cycles');
+  const all = await sList('fee_cycles');
   feeState.cycle = all.find(c => c.month === feeState.month && c.year === feeState.year) || null;
   feeState.entries = feeState.cycle ? await db.list('fee_entries', { cycle_id: feeState.cycle.id }) : [];
 }
@@ -1073,7 +1282,7 @@ async function pageFees(v){
   const ypicker = '<select id="f-year" onchange="feeState.year=+this.value;render()">'
       + years.map(y => '<option' + (feeState.year === y ? ' selected' : '') + '>' + y + '</option>').join('') + '</select>';
 
-  let h = head('Fee sheets', 'One month at a time. Edit here, then download the workbook exactly as your parent body expects it.',
+  let h = head('Fee sheets — ' + (SCOPE.area === 'jurisdiction' || SCOPE.area === 'all' ? 'Jurisdiction' : areaName(SCOPE.area)), 'One month at a time. Edit here, then download the workbook exactly as your parent body expects it.',
     '<div style="width:140px">' + picker + '</div><div style="width:96px">' + ypicker + '</div>'
     + (c ? '<button class="btn gold" onclick="exportWorkbook()">Download Excel</button>' : ''));
 
@@ -1151,9 +1360,9 @@ function cellInput(r, c, locked){
 }
 
 async function createCycle(carry){
-  const cycle = await db.insert('fee_cycles', { month:feeState.month, year:feeState.year, status:'draft' });
+  const cycle = await db.insert('fee_cycles', stampArea({ month:feeState.month, year:feeState.year, status:'draft' }));
   if (carry){
-    const all = (await db.list('fee_cycles')).filter(c => c.id !== cycle.id)
+    const all = (await sList('fee_cycles')).filter(c => c.id !== cycle.id)
       .sort((a,b) => (b.year*12+b.month) - (a.year*12+a.month));
     const prev = all.find(c => (c.year*12+c.month) < (cycle.year*12+cycle.month));
     if (prev){
@@ -1207,7 +1416,7 @@ async function delEntry(id){
   await db.remove('fee_entries', id); toast('Row removed'); render();
 }
 async function addFromRegister(){
-  const students = await db.list('students');
+  const students = await sList('students');
   if (!students.length){ toast('The student register is empty'); return; }
   openModal('Add from student register',
     '<p class="mini" style="margin-top:0">Tick the students to add to the <b>' + esc(SHEETS[feeState.sheet].short) + '</b> sheet.</p>'
@@ -1382,7 +1591,7 @@ function fundRange(){
 async function fundData(){
   const R = fundRange();
   const [donations, disb, cycles] = await Promise.all([
-    db.list('donations'), db.list('disbursements'), db.list('fee_cycles')
+    sList('donations'), sList('disbursements'), sList('fee_cycles')
   ]);
   const inRange = d => d && d >= R.from && d <= R.to;
   const receipts = donations.filter(d => inRange(d.received_on))
@@ -1437,7 +1646,7 @@ async function pageFunds(v){
     .concat([1,2,3,4].map(q => ['q'+q, 'Quarter ' + q]))
     .concat(MONTHS.map((m,i) => ['m'+(i+1), m]));
 
-  let h = head('Funds & donors', 'What came in, what went out, and what is left \u2014 across every kind of support the board gives.',
+  let h = head('Funds & donors — ' + scopeLabel(), 'What came in, what went out, and what is left \u2014 across every kind of support the board gives.',
     '<div style="width:96px"><select onchange="fundState.year=+this.value;render()">'
     + years.map(y => '<option' + (fundState.year === y ? ' selected' : '') + '>' + y + '</option>').join('') + '</select></div>'
     + '<div style="width:140px"><select onchange="fundState.scope=this.value;render()">'
@@ -1554,14 +1763,16 @@ async function pageFunds(v){
 }
 
 async function editDonation(id){
-  const r = id ? (await db.list('donations')).find(x => x.id === id) : { received_on:todayISO(), purpose:'general', mode:'Cash' };
+  const r = id ? (await db.list('donations')).find(x => x.id === id)
+    : { received_on:todayISO(), purpose:'general', mode:'Cash', portfolio_id:defaultPortfolio() };
   const purposes = [['general','General fund']].concat(Object.keys(FUND_CATS).map(k => [k, FUND_CATS[k]]));
   openModal(id ? 'Edit receipt' : 'Record a receipt',
     '<div class="grid g3">' + fld('d-date','Date received', r.received_on, 'date')
     + fld('d-amt','Amount (Rs)', r.amount, 'number')
     + sel('d-purpose','Given for', purposes, r.purpose) + '</div>'
-    + '<div class="grid g2">' + fld('d-donor','Donor name', r.donor_name)
-    + fld('d-contact','Donor contact', r.donor_contact) + '</div>'
+    + '<div class="grid g3">' + fld('d-donor','Donor name', r.donor_name)
+    + fld('d-contact','Donor contact', r.donor_contact)
+    + sel('d-pf','Portfolio', portfolioOptions(), r.portfolio_id || '') + '</div>'
     + '<div class="grid g3">' + sel('d-mode','Mode', PAY_MODES, r.mode)
     + fld('d-ref','Bank / cheque reference', r.reference_no)
     + fld('d-receipt','Receipt no. issued', r.receipt_no) + '</div>'
@@ -1570,15 +1781,16 @@ async function editDonation(id){
       if (!num(mv('d-amt'))){ toast('Enter an amount'); return; }
       const row = { received_on:mv('d-date') || todayISO(), amount:num(mv('d-amt')), purpose:mv('d-purpose'),
         donor_name:mv('d-donor'), donor_contact:mv('d-contact'), mode:mv('d-mode'),
-        reference_no:mv('d-ref'), receipt_no:mv('d-receipt'), notes:mv('d-notes') };
-      id ? await db.update('donations', id, row) : await db.insert('donations', row);
+        reference_no:mv('d-ref'), receipt_no:mv('d-receipt'), notes:mv('d-notes'),
+        portfolio_id:mv('d-pf') || null };
+      id ? await db.update('donations', id, row) : await db.insert('donations', stampArea(row));
       closeModal(); toast('Receipt saved'); render();
     });
 }
 
 async function editDisbursement(id){
-  const r = id ? (await db.list('disbursements')).find(x => x.id === id) : { paid_on:todayISO(), category:'books_copies', mode:'Cash' };
-  const students = await db.list('students');
+  const r = id ? (await db.list('disbursements')).find(x => x.id === id) : { paid_on:todayISO(), category:'books_copies', mode:'Cash', portfolio_id:defaultPortfolio() };
+  const students = await sList('students');
   const cats = Object.keys(FUND_CATS).map(k => [k, FUND_CATS[k]]);
   openModal(id ? 'Edit payment' : 'Record a payment',
     '<p class="mini" style="margin-top:0">Use this for anything outside the three monthly fee sheets \u2014 '
@@ -1589,8 +1801,9 @@ async function editDisbursement(id){
     + '<div class="grid g2">'
     + sel('y-student','Student', [['','\u2014 not tied to one student \u2014']].concat(students.map(x => [x.id, x.full_name])), r.student_id)
     + fld('y-name','Or write the name / who it was paid to', r.student_name || r.paid_to) + '</div>'
-    + '<div class="grid g3">' + fld('y-inst','Institution / shop', r.institution)
-    + sel('y-mode','Mode', PAY_MODES, r.mode) + fld('y-ref','Reference / voucher no.', r.reference_no) + '</div>'
+    + '<div class="grid g4">' + fld('y-inst','Institution / shop', r.institution)
+    + sel('y-mode','Mode', PAY_MODES, r.mode) + fld('y-ref','Reference / voucher no.', r.reference_no)
+    + sel('y-pf','Portfolio', portfolioOptions(), r.portfolio_id || '') + '</div>'
     + fld('y-notes','Notes', r.notes, 'textarea'),
     async () => {
       if (!num(mv('y-amt'))){ toast('Enter an amount'); return; }
@@ -1599,8 +1812,9 @@ async function editDisbursement(id){
       const row = { paid_on:mv('y-date') || todayISO(), amount:num(mv('y-amt')), category:mv('y-cat'),
         student_id:sid || null, student_name:(picked ? picked.full_name : mv('y-name')),
         paid_to:mv('y-name'), institution:mv('y-inst') || (picked ? picked.institution : ''),
-        mode:mv('y-mode'), reference_no:mv('y-ref'), notes:mv('y-notes') };
-      id ? await db.update('disbursements', id, row) : await db.insert('disbursements', row);
+        mode:mv('y-mode'), reference_no:mv('y-ref'), notes:mv('y-notes'),
+        portfolio_id:mv('y-pf') || null };
+      id ? await db.update('disbursements', id, row) : await db.insert('disbursements', stampArea(row));
       closeModal(); toast('Payment saved'); render();
     });
 }
@@ -1721,7 +1935,7 @@ async function shareContent(kind, id){
       attach:'Press the Word button first to download the PRF, then attach it to the email.' };
   }
   if (kind === 'cases'){
-    const rows = (await db.list('cases')).filter(c => c.meeting_date === id);
+    const rows = (await sList('cases')).filter(c => c.meeting_date === id);
     const asked = rows.reduce((s,c) => s + num(c.amount_requested), 0);
     return { subject:'Case minutes \u2014 sitting of ' + fmtDate(id),
       body:['Assalam-o-Alaikum,','',
@@ -2018,7 +2232,7 @@ async function runImport(){
   if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
 
   if (IMPORT.target === 'students'){
-    const existing = (await db.list('students')).map(s => normHead(s.full_name));
+    const existing = (await sList('students')).map(s => normHead(s.full_name));
     const skipDup = $('imp-skipdup') && $('imp-skipdup').checked;
     let skipped = 0;
     const fresh = [];
@@ -2028,7 +2242,7 @@ async function runImport(){
       fresh.push({ full_name:r.full_name, guardian_name:r.guardian_name || '', institution:r.institution || '',
         class_year:r.class_year || '', contact:r.contact || '', category:'school', status:'active', notes:'' });
     }
-    await db.insertMany('students', fresh);
+    await db.insertMany('students', fresh.map(stampArea));
     const added = fresh.length;
     closeModal();
     toast(added + ' student' + (added === 1 ? '' : 's') + ' added' + (skipped ? ', ' + skipped + ' already there' : ''));
@@ -2052,8 +2266,8 @@ async function runImport(){
    Student register
    ===================================================================== */
 async function pageStudents(v){
-  const rows = (await db.list('students')).sort((a,b) => a.full_name.localeCompare(b.full_name));
-  let h = head('Student register', 'The people the board supports. Adding a student here means you never retype a name onto a fee sheet.',
+  const rows = (await sList('students')).sort((a,b) => a.full_name.localeCompare(b.full_name));
+  let h = head('Student register — ' + scopeLabel(), 'The people the board supports. Adding a student here means you never retype a name onto a fee sheet.',
     '<button class="btn ghost" onclick="openImport(\'students\')">Import from Excel</button>'
     + '<button class="btn" onclick="editStudent()">Add student</button>');
   h += '<div class="panel"><div class="body flush">';
@@ -2089,7 +2303,7 @@ async function editStudent(id){
       if (!mv('s-name')){ toast('A name is required'); return; }
       const row = { full_name:mv('s-name'), guardian_name:mv('s-guard'), institution:mv('s-inst'),
         class_year:mv('s-class'), category:mv('s-cat'), contact:mv('s-contact'), notes:mv('s-notes') };
-      id ? await db.update('students', id, row) : await db.insert('students', row);
+      id ? await db.update('students', id, row) : await db.insert('students', stampArea(row));
       closeModal(); toast('Saved'); render();
     });
 }
@@ -2113,11 +2327,11 @@ async function delRow(table, id){
    Tuesday cases
    ===================================================================== */
 async function pageCases(v){
-  const rows = (await db.list('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
+  const rows = (await sList('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
   const byDate = {};
   rows.forEach(c => { (byDate[c.meeting_date] = byDate[c.meeting_date] || []).push(c); });
 
-  let h = head('Tuesday cases', 'What was heard, what the board recommended, and what the parent body said back.',
+  let h = head('Tuesday cases — ' + scopeLabel(), 'What was heard, what the board recommended, and what the parent body said back.',
     '<button class="btn ghost" onclick="exportCases()">Download minutes</button>'
     + '<button class="btn" onclick="editCase()">Log a case</button>');
 
@@ -2166,7 +2380,7 @@ async function editCase(id){
         applicant_name:mv('c-appl'), contact:mv('c-contact'), student_name:mv('c-student'),
         request_summary:mv('c-req'), amount_requested:num(mv('c-amt')), decision:mv('c-dec'),
         forwarded_on:mv('c-fwd') || null, board_recommendation:mv('c-rec'), parent_body_response:mv('c-resp') };
-      id ? await db.update('cases', id, row) : await db.insert('cases', row);
+      id ? await db.update('cases', id, row) : await db.insert('cases', stampArea(row));
       closeModal(); toast('Saved'); render();
     });
 }
@@ -2224,7 +2438,7 @@ async function saveDocx(children, filename, htmlFallback){
    Programmes
    ===================================================================== */
 async function pagePrograms(v){
-  const rows = (await db.list('programs')).sort((a,b) => (b.start_date||'').localeCompare(a.start_date||''));
+  const rows = (await sList('programs')).sort((a,b) => (b.start_date||'').localeCompare(a.start_date||''));
   let h = head('Programmes', 'Courses, events and activities — both the ones you plan and the ones handed down by the parent body.',
     '<button class="btn" onclick="editProgram()">Add programme</button>');
   h += '<div class="panel"><div class="body flush">';
@@ -2233,7 +2447,7 @@ async function pagePrograms(v){
   } else {
     h += tableTools('tbl-prog', 'Search programmes\u2026', rows.length + ' rows')
       + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-prog"><thead><tr>'
-      + sortableTh('tbl-prog', 0, 'Programme') + sortableTh('tbl-prog', 1, 'Type')
+      + sortableTh('tbl-prog', 0, 'Programme') + sortableTh('tbl-prog', 1, 'Portfolio')
       + sortableTh('tbl-prog', 2, 'Origin') + sortableTh('tbl-prog', 3, 'Dates')
       + '<th>Venue</th><th>Permission</th>' + sortableTh('tbl-prog', 6, 'Status') + '<th></th></tr></thead><tbody>'
       + rows.map(p => {
@@ -2245,8 +2459,10 @@ async function pagePrograms(v){
             : '<span class="tag t-gold">PRF required</span>';
           prfCell += ' <button class="btn sm ghost" onclick="editPRF(null,\'' + p.id + '\')">Draft</button>';
         }
-        return '<tr><td>' + esc(p.title) + (p.collaboration ? '<div class="mini">with ' + esc(p.collaboration) + '</div>' : '') + '</td>'
-        + '<td>' + esc(p.type) + '</td><td>' + (p.source === 'parent_body' ? 'Parent body' : 'LEB') + '</td>'
+        return '<tr><td>' + esc(p.title)
+        + '<div class="mini">' + esc(p.type) + (p.collaboration ? ' \u00b7 with ' + esc(p.collaboration) : '') + '</div></td>'
+        + '<td>' + esc(portName(p.portfolio_id)) + '<div class="mini">' + esc(areaName(p.area_id)) + '</div></td>'
+        + '<td>' + (p.source === 'parent_body' ? 'Parent body' : 'LEB') + '</td>'
         + '<td>' + fmtDate(p.start_date) + (p.end_date ? '<div class="mini">to ' + fmtDate(p.end_date) + '</div>' : '') + '</td>'
         + '<td>' + esc(p.venue || '—') + '</td><td>' + prfCell + '</td><td>' + statusTag(p.status) + '</td>'
         + '<td style="width:1%;white-space:nowrap"><button class="btn sm send" onclick="openShare(\'program\',\'' + p.id + '\')">Send</button> '
@@ -2257,9 +2473,14 @@ async function pagePrograms(v){
   h += '</div></div>'; v.innerHTML = h;
 }
 async function editProgram(id){
-  const p = id ? (await db.list('programs')).find(x => x.id === id) : { type:'program', source:'leb', status:'planned', requires_prf:true };
+  const p = id ? (await db.list('programs')).find(x => x.id === id)
+    : { type:'program', source:'leb', status:'planned', requires_prf:true, portfolio_id:defaultPortfolio() };
   openModal(id ? 'Edit programme' : 'Add programme',
     fld('p-title','Programme title', p.title)
+    + '<div class="grid g2">' + sel('p-portfolio','Portfolio', portfolioOptions(), p.portfolio_id || '')
+    + '<div class="field"><label>Belongs to</label><div style="padding:9px 0;font-size:14px">'
+    + esc(SCOPE.area === 'jurisdiction' || SCOPE.area === 'all' ? 'Jurisdiction level' : areaName(SCOPE.area))
+    + '</div></div></div>'
     + '<div class="grid g3">'
     + sel('p-type','Type', [['program','Programme'],['course','Course'],['event','Event'],['activity','Activity']], p.type)
     + sel('p-source','Where it came from', [['leb','Our own initiative'],['parent_body','Given by parent body']], p.source)
@@ -2276,8 +2497,9 @@ async function editProgram(id){
       const row = { title:mv('p-title'), type:mv('p-type'), source:mv('p-source'), status:mv('p-status'),
         start_date:mv('p-start') || null, end_date:mv('p-end') || null, venue:mv('p-venue'),
         collaboration:mv('p-collab'), target_group:mv('p-target'), expected_participants:mv('p-part'),
-        description:mv('p-desc'), requires_prf: mv('p-prf') === 'yes' };
-      id ? await db.update('programs', id, row) : await db.insert('programs', row);
+        description:mv('p-desc'), requires_prf: mv('p-prf') === 'yes',
+        portfolio_id:mv('p-portfolio') || null };
+      id ? await db.update('programs', id, row) : await db.insert('programs', stampArea(row));
       closeModal(); toast('Saved'); render();
     });
 }
@@ -2286,7 +2508,7 @@ async function editProgram(id){
    Permission forms (PRF)
    ===================================================================== */
 async function pagePRF(v){
-  const [rows, programs] = await Promise.all([db.list('prf_requests'), db.list('programs')]);
+  const [rows, programs] = await Promise.all([sList('prf_requests'), sList('programs')]);
   rows.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
   let h = head('Permission forms', 'Fill the details once. The board template is generated for you, and the 15-day rule is checked before you send it.',
     '<button class="btn" onclick="editPRF()">New permission form</button>');
@@ -2354,13 +2576,14 @@ function budgetRow(b){
 
 async function editPRF(id, programId){
   const all = await db.list('prf_requests');
-  const programs = await db.list('programs');
+  const programs = await sList('programs');
   let p = id ? all.find(x => x.id === id) : null;
   if (!p){
     const src = programId ? programs.find(x => x.id === programId) : null;
     p = { board_portfolio:'Local Education Board For Kharadar' + (src && src.collaboration ? ', in collaboration with ' + src.collaboration : ''),
       program_name: src ? src.title : '', brief_description: src ? src.description : '',
       program_id: programId || null, target_group: src ? src.target_group : '',
+      portfolio_id: (src && src.portfolio_id) || defaultPortfolio(),
       expected_participants: src ? src.expected_participants : '', venue: src ? src.venue : '',
       event_date: src ? src.start_date : '', tkn_utilized:'No', transport:'Not required',
       structure_items:[], aims:[], budget_rows:[], status:'draft', submitted_on: todayISO() };
@@ -2369,7 +2592,8 @@ async function editPRF(id, programId){
 
   openModal(id ? 'Edit permission form' : 'New permission form',
     '<div class="grid g2">' + sel('r-prog','Linked programme', progOpts, p.program_id)
-    + fld('r-portfolio','Name of Boards / Portfolio', p.board_portfolio) + '</div>'
+    + sel('r-pf','Portfolio', portfolioOptions(), p.portfolio_id || '') + '</div>'
+    + fld('r-portfolio','Name of Boards / Portfolio (as written on the form)', p.board_portfolio)
     + fld('r-name','Name of the Programme', p.program_name)
     + fld('r-brief','Brief description of the Programme', p.brief_description, 'textarea')
     + '<h4 class="serif" style="margin:18px 0 6px">Programme structure</h4>'
@@ -2409,7 +2633,8 @@ async function editPRF(id, programId){
         expense:document.querySelectorAll('.bg-e')[i].value.trim(),
         expense_amt:document.querySelectorAll('.bg-ea')[i].value.trim()
       })).filter(b => b.income || b.expense);
-      const row = { program_id:mv('r-prog') || null, board_portfolio:mv('r-portfolio'), program_name:mv('r-name'),
+      const row = { program_id:mv('r-prog') || null, portfolio_id:mv('r-pf') || null,
+        board_portfolio:mv('r-portfolio'), program_name:mv('r-name'),
         brief_description:mv('r-brief'), structure_items:collectRepeat('str'), theme:mv('r-theme'),
         duration:mv('r-duration'), approach_notes:mv('r-approach'), target_group:mv('r-target'),
         initial_participants:mv('r-initial'), learning_focus:mv('r-focus'), aims:collectRepeat('aim'),
@@ -2422,7 +2647,7 @@ async function editPRF(id, programId){
       const lead = row.event_date ? daysBetween(row.submitted_on, row.event_date) : null;
       if (lead !== null && lead < 15 && row.status === 'submitted'
           && !confirm('This is ' + lead + ' days before the programme, inside the 15-day window. Save it anyway?')) return;
-      id ? await db.update('prf_requests', id, row) : await db.insert('prf_requests', row);
+      id ? await db.update('prf_requests', id, row) : await db.insert('prf_requests', stampArea(row));
       closeModal();
       toast(lead !== null && lead < 15 ? 'Saved — note the 15-day rule' : 'Saved');
       render();
@@ -2523,7 +2748,7 @@ async function buildQuarter(q, y){
   const months = [(q-1)*3+1, (q-1)*3+2, (q-1)*3+3];
   const from = y + '-' + String(months[0]).padStart(2,'0') + '-01';
   const to   = y + '-' + String(months[2]).padStart(2,'0') + '-31';
-  const [cycles, cases, programs] = await Promise.all([db.list('fee_cycles'), db.list('cases'), db.list('programs')]);
+  const [cycles, cases, programs] = await Promise.all([sList('fee_cycles'), sList('cases'), sList('programs')]);
   const inQ = cycles.filter(c => c.year === y && months.includes(c.month)).sort((a,b) => a.month - b.month);
   const perMonth = [];
   const allEntries = await db.listIn('fee_entries', 'cycle_id', inQ.map(c => c.id));
@@ -2654,7 +2879,7 @@ async function exportReport(){
 }
 
 async function exportCases(){
-  const rows = (await db.list('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
+  const rows = (await sList('cases')).sort((a,b) => (b.meeting_date||'').localeCompare(a.meeting_date||''));
   await saveDocx(() => {
     const out = [ para('Local Education Board — Kharadar', { bold:true, center:true, size:28 }),
       para('Case minutes', { bold:true, center:true, size:24 }), new docx.Paragraph({ text:'' }) ];
@@ -2676,38 +2901,82 @@ async function exportCases(){
    Board members — admins decide who gets in
    ===================================================================== */
 async function pageMembers(v){
-  const rows = (await db.list('profiles')).sort((a,b) =>
-    (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1) || (a.full_name||'').localeCompare(b.full_name||''));
+  const rows = (await db.list('profiles')).sort((x,y) =>
+    (x.role === 'pending' ? 0 : 1) - (y.role === 'pending' ? 0 : 1)
+    || (x.full_name||'').localeCompare(y.full_name||''));
   const waiting = rows.filter(r => r.role === 'pending');
 
-  let h = head('Board members', 'Anyone can create an account. Nobody sees a record until you approve them here.');
-  if (waiting.length) h += '<div class="note"><b>' + waiting.length + ' account'
-    + (waiting.length > 1 ? 's are' : ' is') + ' waiting for you.</b></div>';
+  let h = head('Board members',
+    'Who sits where. A person only ever sees the area they belong to \u2014 that rule is held by the database, not just by this screen.');
 
-  h += '<div class="panel"><div class="body flush"><div class="scroll"><table class="ledger">'
-    + '<thead><tr><th>Name</th><th>Designation</th><th>Contact</th><th>Access</th><th></th></tr></thead><tbody>'
-    + rows.map(p => {
-        const me = p.id === ME.id;
-        return '<tr><td>' + esc(p.full_name || '(no name yet)') + (me ? ' <span class="tag t-blue">you</span>' : '') + '</td>'
-        + '<td>' + esc(p.designation || '—') + '</td><td>' + esc(p.contact || '—') + '</td>'
-        + '<td>' + (p.role === 'pending' ? '<span class="tag t-gold">Waiting</span>'
-                  : p.role === 'admin'   ? '<span class="tag t-green">Admin</span>'
-                  : p.role === 'blocked' ? '<span class="tag t-red">Blocked</span>'
-                  : '<span class="tag t-grey">Member</span>') + '</td>'
-        + '<td style="width:1%;white-space:nowrap">'
-        + (me ? '<span class="mini">you cannot change your own access</span>'
-              : '<select onchange="setRole(\'' + p.id + '\',this.value)" style="width:150px">'
-                + [['pending','Waiting'],['member','Member'],['admin','Admin'],['blocked','Blocked']]
-                    .map(o => '<option value="' + o[0] + '"' + (p.role === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('')
-                + '</select>')
-        + '</td></tr>';
-      }).join('')
-    + '</tbody></table></div></div></div>';
+  if (waiting.length) h += '<div class="note"><b>' + waiting.length + ' account'
+    + (waiting.length > 1 ? 's are' : ' is') + ' waiting to be placed.</b></div>';
+
+  // grouped by where they sit
+  const groups = [{ key:null, label:'Jurisdiction level' }]
+    .concat(ORG.areas.map(a => ({ key:a.id, label:a.name })));
+
+  groups.forEach(g => {
+    const list = rows.filter(r => (r.area_id || null) === g.key && r.role !== 'pending' && r.role !== 'blocked');
+    if (!list.length) return;
+    h += '<div class="panel"><h2>' + esc(g.label) + '<span class="mini">' + list.length + ' member'
+      + (list.length === 1 ? '' : 's') + '</span></h2><div class="body flush"><div class="scroll">'
+      + memberTable(list) + '</div></div></div>';
+  });
+
+  const rest = rows.filter(r => r.role === 'pending' || r.role === 'blocked');
+  if (rest.length){
+    h += '<div class="panel"><h2>Waiting and blocked</h2><div class="body flush"><div class="scroll">'
+      + memberTable(rest) + '</div></div></div>';
+  }
   v.innerHTML = h;
 }
-async function setRole(id, role){
-  await db.update('profiles', id, { role:role });
-  toast('Access updated'); render();
+
+function memberTable(list){
+  return '<table class="ledger"><thead><tr><th>Name</th><th>Role</th><th>Area</th>'
+    + '<th>Portfolio</th><th>Finance</th></tr></thead><tbody>'
+    + list.map(p => {
+        const me = p.id === ME.id;
+        const w = ' style="width:150px"';
+        return '<tr><td>' + esc(p.full_name || '(no name yet)')
+          + (me ? ' <span class="tag t-blue">you</span>' : '')
+          + (p.contact ? '<div class="mini">' + esc(p.contact) + '</div>' : '') + '</td>'
+          + '<td>' + (me ? '<span class="tag t-grey">' + esc(roleName(p.role)) + '</span>'
+              : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'role\',this.value)">'
+                + ROLES.map(r => '<option value="' + r[0] + '"' + (p.role === r[0] ? ' selected' : '') + '>'
+                    + esc(r[1]) + '</option>').join('') + '</select>') + '</td>'
+          + '<td>' + (me ? esc(areaName(p.area_id))
+              : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'area_id\',this.value)">'
+                + [['','Jurisdiction level']].concat(ORG.areas.map(a => [a.id, a.name]))
+                    .map(o => '<option value="' + o[0] + '"' + ((p.area_id||'') === o[0] ? ' selected' : '') + '>'
+                      + esc(o[1]) + '</option>').join('') + '</select>') + '</td>'
+          + '<td>' + (me ? esc(portName(p.portfolio_id))
+              : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'portfolio_id\',this.value)">'
+                + [['','\u2014 none \u2014']].concat(ORG.portfolios.map(x => [x.id, x.name]))
+                    .map(o => '<option value="' + o[0] + '"' + ((p.portfolio_id||'') === o[0] ? ' selected' : '') + '>'
+                      + esc(o[1]) + '</option>').join('') + '</select>') + '</td>'
+          + '<td>' + (me ? (p.finance_access ? 'Yes' : 'By role')
+              : '<label style="display:flex;align-items:center;gap:7px;margin:0;color:var(--text)">'
+                + '<input type="checkbox" style="width:auto"' + (p.finance_access ? ' checked' : '')
+                + ' onchange="setMember(\'' + p.id + '\',\'finance_access\',this.checked)"> can see money</label>')
+          + '</td></tr>';
+      }).join('')
+    + '</tbody></table>';
+}
+
+async function setMember(id, field, value){
+  const patch = {};
+  patch[field] = (field === 'finance_access') ? !!value : (value || null);
+  savingStart();
+  try{
+    await db.update('profiles', id, patch);
+    savingDone(true);
+    toast('Updated');
+    render();
+  }catch(err){
+    savingDone(false);
+    toast('Could not change that: ' + (err.message || err));
+  }
 }
 
 /* =====================================================================
@@ -2775,8 +3044,19 @@ async function signOut(){
   location.reload();
 }
 
+async function loadOrg(){
+  if (LOCAL) return;
+  try{
+    const [a, p] = await Promise.all([db.list('areas'), db.list('portfolios')]);
+    const by = (x,y) => (x.sort||0) - (y.sort||0);
+    if (a && a.length) ORG.areas = a.sort(by);
+    if (p && p.length) ORG.portfolios = p.sort(by);
+  }catch(e){ console.warn('Falling back to the built-in area list', e); }
+}
+
 async function afterAuth(user){
   await loadProfile(user);
+  await loadOrg();
   if (ME.role === 'pending' || ME.role === 'blocked'){
     $('gate').style.display = 'none';
     $('hold').style.display = 'flex';
@@ -2792,7 +3072,7 @@ async function afterAuth(user){
 }
 
 async function loadProfile(user){
-  ME = { id:user.id, name:user.email, role:'pending' };
+  ME = { id:user.id, name:user.email, role:'pending', area_id:null, portfolio_id:null, finance_access:false };
   try{
     let { data } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
     if (!data){
@@ -2805,7 +3085,9 @@ async function loadProfile(user){
       }).select().single();
       data = ins.data;
     }
-    if (data) ME = { id:user.id, name:data.full_name || user.email, role:data.role || 'pending' };
+    if (data) ME = { id:user.id, name:data.full_name || user.email, role:data.role || 'pending',
+                     area_id:data.area_id || null, portfolio_id:data.portfolio_id || null,
+                     finance_access:!!data.finance_access };
   }catch(e){
     console.warn('Could not read profile', e);
     ME.error = e.message || String(e);
@@ -2818,7 +3100,11 @@ function startApp(){
   $('app').style.display = 'block';
   $('who').textContent = ME.name || 'Board member';
   applyTheme(document.body.classList.contains('dark') ? 'dark' : 'light');
-  $('role-lbl').innerHTML = esc((ME.role === 'admin' ? 'Admin' : 'Member') + ' · ' + APP_VERSION)
+  initScope();
+  drawScopeBar();
+  $('role-lbl').innerHTML = esc(roleName(ME.role)
+      + (ME.portfolio_id ? ' · ' + portName(ME.portfolio_id) : '')
+      + ' · ' + APP_VERSION)
     + (LOCAL ? '<br><span style="cursor:pointer;text-decoration:underline" onclick="resetLocal()">Clear local records</span>' : '');
   drawNav(); render();
 }
@@ -2826,7 +3112,8 @@ function startApp(){
 (async function boot(){
   if (LOCAL){
     loadLocal();
-    ME = { id:'local', name:'Board member', role:'admin' };
+    ME = { id:'local', name:'Board member', role:'chairperson',
+           area_id:null, portfolio_id:null, finance_access:true };
     startApp();
     return;
   }
