@@ -423,6 +423,13 @@ html:not(.js) .reveal{opacity:1;transform:none}
     <div id="tab-up" style="display:none">
       <div class="field"><label for="su-name">Full name</label><input id="su-name" autocomplete="name"></div>
       <div class="field"><label for="su-em">Email</label><input id="su-em" type="email" autocomplete="email"></div>
+      <div class="field"><label for="su-contact">Contact number</label><input id="su-contact" autocomplete="tel"></div>
+      <div class="field"><label for="su-role">Your role on the board</label>
+        <select id="su-role" onchange="signupShape()"></select></div>
+      <div class="field" id="su-area-wrap"><label for="su-area">Area</label>
+        <select id="su-area"></select></div>
+      <div class="field" id="su-port-wrap" style="display:none"><label for="su-port">Portfolio</label>
+        <select id="su-port"></select></div>
       <div class="field"><label for="su-pw">Password</label><input id="su-pw" type="password" autocomplete="new-password">
         <p class="mini">At least 6 characters.</p></div>
       <button class="btn" style="width:100%" onclick="signUp()">Create account</button>
@@ -433,7 +440,7 @@ html:not(.js) .reveal{opacity:1;transform:none}
     <p id="gate-msg" class="mini" style="margin-top:12px"></p>
     <p class="mini" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
       The first account created becomes the board admin. Everyone after that waits for the
-      admin to let them in.</p>
+      chairperson to confirm their posting before any records appear.</p>
   </div>
 </div>
 
@@ -514,7 +521,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.4';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -615,14 +622,34 @@ const portName = id => id ? ((ORG.portfolios.find(p => p.id === id) || {}).name 
 const ROLES = [
   ['chairperson',     'Chairperson'],
   ['secretary',       'Secretary'],
+  ['area_head',       'Convenor'],
+  ['area_co_head',    'Co-convenor'],
+  ['area_member',     'Area member'],
   ['portfolio_head',  'Portfolio head'],
   ['portfolio_member','Portfolio member'],
-  ['area_head',       'Area convenor'],
-  ['area_member',     'Area member'],
   ['admin',           'System admin'],
   ['pending',         'Waiting'],
   ['blocked',         'Blocked']
 ];
+/* Chair, secretary, convenor and co-convenor oversee everything within their
+   own level, so they carry no portfolio. Portfolio people carry one, and an
+   area as well when they serve at area level rather than the jurisdiction. */
+const ROLE_SHAPE = {
+  chairperson:      { area:'none',     portfolio:'none', where:'Parent body' },
+  secretary:        { area:'none',     portfolio:'none', where:'Parent body' },
+  area_head:        { area:'required', portfolio:'none', where:'Area' },
+  area_co_head:     { area:'required', portfolio:'none', where:'Area' },
+  area_member:      { area:'required', portfolio:'none', where:'Area' },
+  portfolio_head:   { area:'optional', portfolio:'required', where:'Portfolio' },
+  portfolio_member: { area:'optional', portfolio:'required', where:'Portfolio' },
+  admin:            { area:'none',     portfolio:'none', where:'System' },
+  pending:          { area:'none',     portfolio:'none', where:'' },
+  blocked:          { area:'none',     portfolio:'none', where:'' }
+};
+const shapeOf = r => ROLE_SHAPE[r] || ROLE_SHAPE.pending;
+/* Roles a person may ask for when signing up. Not admin, obviously. */
+const SIGNUP_ROLES = ['chairperson','secretary','area_head','area_co_head',
+                      'area_member','portfolio_head','portfolio_member'];
 const roleName = r => ((ROLES.find(x => x[0] === r) || [])[1] || r);
 
 /* Which records carry a portfolio. */
@@ -635,17 +662,23 @@ const AREA_TABLES = ['students','fee_cycles','cases','programs','prf_requests',
 let SCOPE = { area:'kharadar', portfolio:'all' };
 
 const JURIS_ROLES  = ['admin','chairperson','secretary'];
-const FINANCE_ROLES = ['admin','chairperson','secretary','area_head'];
+const FINANCE_ROLES = ['admin','chairperson','secretary','area_head','area_co_head'];
 
 function atJurisdiction(){
   return JURIS_ROLES.indexOf(ME.role) >= 0
     || (['portfolio_head','portfolio_member'].indexOf(ME.role) >= 0 && !ME.area_id);
 }
 function canFinance(){ return FINANCE_ROLES.indexOf(ME.role) >= 0 || !!ME.finance_access; }
+/* The parent body proper: chairperson, secretary, admin. Portfolio people work
+   at jurisdiction level too, but they are not the parent body. */
+function isParentBody(){ return JURIS_ROLES.indexOf(ME.role) >= 0; }
 function canManagePeople(){ return JURIS_ROLES.indexOf(ME.role) >= 0; }
 function canDelete(){ return FINANCE_ROLES.indexOf(ME.role) >= 0; }
+/* A portfolio only ever applies to the two portfolio roles. */
+function roleTakesPortfolio(r){ return shapeOf(r).portfolio !== 'none'; }
+function roleTakesArea(r){ return shapeOf(r).area !== 'none'; }
 function lockedToPortfolio(){
-  return ['portfolio_head','portfolio_member'].indexOf(ME.role) >= 0 && !!ME.portfolio_id;
+  return roleTakesPortfolio(ME.role) && !!ME.portfolio_id;
 }
 
 /* Does a record fall inside what is on screen right now? */
@@ -1091,27 +1124,29 @@ async function undoDelete(){
 /* ---- command palette ---- */
 let palSel = 0;
 function paletteItems(){
-  const out = PAGES.filter(p => !(p.adminOnly && (LOCAL || ME.role !== 'admin')))
-    .map(p => ({ label:p.label, group:'Go to', run:() => go(p.id) }));
+  const out = PAGES.filter(p => pageAllowed(p.id))
+    .map(p => ({ label:(p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label,
+                 group:'Go to', run:() => go(p.id) }));
+  const money = canFinance(), juris = LOCAL || isParentBody(), issues = canIssueDirectives();
   return out.concat([
-    { label:'Record a receipt from a donor', group:'Funds', run:() => { go('funds'); setTimeout(editDonation, 60); } },
-    { label:'Record a payment',              group:'Funds', run:() => { go('funds'); setTimeout(editDisbursement, 60); } },
-    { label:'Download the funds ledger',     group:'Funds', run:() => { go('funds'); setTimeout(exportLedger, 60); } },
+    money && { label:'Record a receipt from a donor', group:'Funds', run:() => { go('funds'); setTimeout(editDonation, 60); } },
+    money && { label:'Record a payment',              group:'Funds', run:() => { go('funds'); setTimeout(editDisbursement, 60); } },
+    money && { label:'Download the funds ledger',     group:'Funds', run:() => { go('funds'); setTimeout(exportLedger, 60); } },
     { label:'Log a Tuesday case',            group:'Cases', run:() => { go('cases'); setTimeout(editCase, 60); } },
     { label:'Send case minutes',             group:'Cases', run:() => go('cases') },
     { label:'Add a student',                 group:'Register', run:() => { go('students'); setTimeout(editStudent, 60); } },
     { label:'Import students from Excel',    group:'Register', run:() => { go('students'); setTimeout(() => openImport('students'), 60); } },
     { label:'Download this month as Excel',  group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && exportWorkbook(), 400); } },
     { label:'Import rows from Excel',        group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && openImport('fees'), 400); } },
-    { label:'Issue a directive',             group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
+    issues && { label:'Issue a directive',           group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
     { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
-    { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
+    juris && { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
     { label:'Add a programme',               group:'Programmes', run:() => { go('programs'); setTimeout(editProgram, 60); } },
     { label:'New permission form',           group:'PRF', run:() => { go('prf'); setTimeout(editPRF, 60); } },
     { label:'Send the quarterly report',     group:'Report', run:() => { go('report'); setTimeout(() => openShare('report'), 500); } },
     { label:document.body.classList.contains('dark') ? 'Switch to light theme' : 'Switch to dark theme',
       group:'View', run:toggleTheme }
-  ]);
+  ].filter(Boolean));
 }
 function openPalette(){
   toggleSide(false);
@@ -1328,21 +1363,35 @@ function initScope(){
   }
 }
 
+/* The single rule for what this person may open. Used by the sidebar, by
+   go(), by render() and by the jump bar, so none of them can disagree. */
+function pageAllowed(id){
+  const p = PAGES.find(x => x.id === id);
+  if (!p) return false;
+  if (p.financeOnly && !canFinance()) return false;
+  if (p.peopleOnly && (LOCAL || !canManagePeople())) return false;
+  if (p.jurisdictionOnly && !(LOCAL || isParentBody())) return false;
+  return true;
+}
+
 function drawNav(){
   const label = p => (p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label;
-  $('nav').innerHTML = PAGES.filter(p =>
-      !(p.financeOnly && !canFinance()) &&
-      !(p.peopleOnly && (LOCAL || !canManagePeople())) &&
-      !(p.jurisdictionOnly && !(LOCAL || atJurisdiction()))
-    ).map(p =>
+  $('nav').innerHTML = PAGES.filter(p => pageAllowed(p.id)).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
     + '<span>' + label(p) + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
 }
-function go(id){ page = id; drawNav(); render(); window.scrollTo(0,0); toggleSide(false); }
+function go(id){
+  if (!pageAllowed(id)){
+    toast('That is outside what your posting covers');
+    id = 'dash';
+  }
+  page = id; drawNav(); render(); window.scrollTo(0,0); toggleSide(false);
+}
 
 async function render(){
   const v = $('view');
+  if (!pageAllowed(page)) page = 'dash';
   v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
   try{
     if (page === 'dash')      await pageDash(v);
@@ -3167,8 +3216,27 @@ async function pageMembers(v){
   let h = head('Board members',
     'Who sits where. A person only ever sees the area they belong to \u2014 that rule is held by the database, not just by this screen.');
 
-  if (waiting.length) h += '<div class="note"><b>' + waiting.length + ' account'
-    + (waiting.length > 1 ? 's are' : ' is') + ' waiting to be placed.</b></div>';
+  if (waiting.length){
+    h += '<div class="panel"><h2>Waiting to be placed<span class="mini">' + waiting.length
+      + '</span></h2><div class="body flush"><div class="scroll"><table class="ledger">'
+      + '<thead><tr><th>Name</th><th>Asked to serve as</th><th></th></tr></thead><tbody>'
+      + waiting.map(p => {
+          const asked = p.requested_role
+            ? roleName(p.requested_role)
+              + (p.requested_area ? ' \u00b7 ' + areaName(p.requested_area) : '')
+              + (p.requested_portfolio ? ' \u00b7 ' + portName(p.requested_portfolio) : '')
+            : null;
+          return '<tr><td>' + esc(p.full_name || '(no name)')
+            + (p.contact ? '<div class="mini">' + esc(p.contact) + '</div>' : '') + '</td>'
+            + '<td>' + (asked ? '<span class="tag t-gold">' + esc(asked) + '</span>'
+                              : '<span class="mini">nothing was requested</span>') + '</td>'
+            + '<td style="width:1%;white-space:nowrap">'
+            + (asked ? '<button class="btn sm" onclick="approveRequest(\'' + p.id + '\')">Confirm this posting</button> ' : '')
+            + '<button class="btn sm ghost" onclick="setMember(\'' + p.id + '\',\'role\',\'blocked\')">Block</button>'
+            + '</td></tr>';
+        }).join('')
+      + '</tbody></table></div></div></div>';
+  }
 
   // grouped by where they sit
   const groups = [{ key:null, label:'Jurisdiction level' }]
@@ -3203,12 +3271,16 @@ function memberTable(list){
               : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'role\',this.value)">'
                 + ROLES.map(r => '<option value="' + r[0] + '"' + (p.role === r[0] ? ' selected' : '') + '>'
                     + esc(r[1]) + '</option>').join('') + '</select>') + '</td>'
-          + '<td>' + (me ? esc(areaName(p.area_id))
+          + '<td>' + (!roleTakesArea(p.role)
+              ? '<span class="mini">parent body</span>'
+              : me ? esc(areaName(p.area_id))
               : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'area_id\',this.value)">'
                 + [['','Jurisdiction level']].concat(ORG.areas.map(a => [a.id, a.name]))
                     .map(o => '<option value="' + o[0] + '"' + ((p.area_id||'') === o[0] ? ' selected' : '') + '>'
                       + esc(o[1]) + '</option>').join('') + '</select>') + '</td>'
-          + '<td>' + (me ? esc(portName(p.portfolio_id))
+          + '<td>' + (!roleTakesPortfolio(p.role)
+              ? '<span class="mini">oversees everything</span>'
+              : me ? esc(portName(p.portfolio_id))
               : '<select' + w + ' onchange="setMember(\'' + p.id + '\',\'portfolio_id\',this.value)">'
                 + [['','\u2014 none \u2014']].concat(ORG.portfolios.map(x => [x.id, x.name]))
                     .map(o => '<option value="' + o[0] + '"' + ((p.portfolio_id||'') === o[0] ? ' selected' : '') + '>'
@@ -3220,6 +3292,27 @@ function memberTable(list){
           + '</td></tr>';
       }).join('')
     + '</tbody></table>';
+}
+
+/* Approve exactly what the person asked for at sign-up. */
+async function approveRequest(id){
+  const p = (await db.list('profiles')).find(x => x.id === id);
+  if (!p || !p.requested_role){ toast('Nothing was requested'); return; }
+  const shape = shapeOf(p.requested_role);
+  savingStart();
+  try{
+    await db.update('profiles', id, {
+      role: p.requested_role,
+      area_id: shape.area === 'none' ? null : (p.requested_area || null),
+      portfolio_id: shape.portfolio === 'none' ? null : (p.requested_portfolio || null)
+    });
+    savingDone(true);
+    toast(esc(p.full_name || 'Member') + ' placed as ' + roleName(p.requested_role));
+    render();
+  }catch(err){
+    savingDone(false);
+    toast('Could not place them: ' + (err.message || err));
+  }
 }
 
 async function setMember(id, field, value){
@@ -3240,7 +3333,33 @@ async function setMember(id, field, value){
 /* =====================================================================
    Sign in, sign up, boot
    ===================================================================== */
+/* The sign-up form asks where a person serves. It is only ever a request:
+   the chairperson confirms it before anything is visible. */
+function signupInit(){
+  const roleSel = $('su-role'); if (!roleSel || roleSel.options.length) return;
+  roleSel.innerHTML = '<option value="">\u2014 choose \u2014</option>'
+    + SIGNUP_ROLES.map(r => '<option value="' + r + '">' + esc(roleName(r)) + '</option>').join('');
+  $('su-area').innerHTML = '<option value="">\u2014 choose \u2014</option>'
+    + ORG.areas.map(a => '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
+  $('su-port').innerHTML = '<option value="">\u2014 choose \u2014</option>'
+    + ORG.portfolios.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+  signupShape();
+}
+function signupShape(){
+  const r = mv('su-role');
+  const shape = r ? shapeOf(r) : { area:'required', portfolio:'none' };
+  const areaWrap = $('su-area-wrap'), portWrap = $('su-port-wrap');
+  areaWrap.style.display = shape.area === 'none' ? 'none' : '';
+  portWrap.style.display = shape.portfolio === 'none' ? 'none' : '';
+  const lbl = areaWrap.querySelector('label');
+  if (lbl) lbl.textContent = shape.area === 'optional'
+    ? 'Area (leave blank if you serve the whole jurisdiction)' : 'Area';
+  if (shape.area === 'none') $('su-area').value = '';
+  if (shape.portfolio === 'none') $('su-port').value = '';
+}
+
 function gateMode(m){
+  if (m === 'up') signupInit();
   $('tab-in').style.display = m === 'in' ? 'block' : 'none';
   $('tab-up').style.display = m === 'up' ? 'block' : 'none';
   $('gate-msg').textContent = '';
@@ -3281,12 +3400,20 @@ async function signIn(){
 async function signUp(){
   if (!authReady()) return;
   const name = mv('su-name'), email = mv('su-em'), pass = $('su-pw').value;
-  if (!name || !email || !pass){ gateMsg('Fill in all three fields.', true); return; }
+  if (!name || !email || !pass){ gateMsg('Fill in your name, email and password.', true); return; }
   if (pass.length < 6){ gateMsg('Use a password of at least 6 characters.', true); return; }
+  const want = mv('su-role');
+  if (!want){ gateMsg('Choose the role you serve in.', true); return; }
+  const shape = shapeOf(want);
+  if (shape.area === 'required' && !mv('su-area')){ gateMsg('Choose your area.', true); return; }
+  if (shape.portfolio === 'required' && !mv('su-port')){ gateMsg('Choose your portfolio.', true); return; }
   gateMsg('Creating your account…');
   let data, error;
   try{
-    ({ data, error } = await sb.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:name } } }));
+    ({ data, error } = await sb.auth.signUp({ email:email, password:pass, options:{ data:{
+      full_name:name, contact:mv('su-contact'),
+      requested_role:mv('su-role'), requested_area:mv('su-area'), requested_portfolio:mv('su-port')
+    } } }));
   }catch(e){ gateMsg('Could not reach Supabase: ' + e.message, true); return; }
   if (error){ gateMsg(error.message, true); return; }
   if (!data.session){
@@ -3318,7 +3445,11 @@ async function afterAuth(user){
   if (ME.role === 'pending' || ME.role === 'blocked'){
     $('gate').style.display = 'none';
     $('hold').style.display = 'flex';
-    $('hold-who').textContent = ME.name || user.email;
+    $('hold-who').textContent = (ME.name || user.email)
+      + (ME.requested_role ? ' \u00b7 asked to serve as ' + roleName(ME.requested_role)
+          + (ME.requested_area ? ' for ' + areaName(ME.requested_area) : '')
+          + (ME.requested_portfolio ? ', ' + portName(ME.requested_portfolio) : '')
+        : '');
     if (ME.error){
       $('hold-who').insertAdjacentHTML('afterend',
         '<div class="note warn" style="margin:12px 0 0">Could not read your profile row: ' + esc(ME.error)
@@ -3345,7 +3476,10 @@ async function loadProfile(user){
     }
     if (data) ME = { id:user.id, name:data.full_name || user.email, role:data.role || 'pending',
                      area_id:data.area_id || null, portfolio_id:data.portfolio_id || null,
-                     finance_access:!!data.finance_access };
+                     finance_access:!!data.finance_access,
+                     requested_role:data.requested_role || null,
+                     requested_area:data.requested_area || null,
+                     requested_portfolio:data.requested_portfolio || null };
   }catch(e){
     console.warn('Could not read profile', e);
     ME.error = e.message || String(e);
@@ -3364,6 +3498,7 @@ function startApp(){
       + (ME.portfolio_id ? ' · ' + portName(ME.portfolio_id) : '')
       + ' · ' + APP_VERSION)
     + (LOCAL ? '<br><span style="cursor:pointer;text-decoration:underline" onclick="resetLocal()">Clear local records</span>' : '');
+  if (!pageAllowed(page)) page = 'dash';
   drawNav(); render();
 }
 
