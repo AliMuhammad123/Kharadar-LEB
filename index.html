@@ -382,6 +382,9 @@ tr.hidden-row{display:none}
   border-radius:4px;padding:2px 6px;color:#9AA6A3}
 
 /* ============ save state ============ */
+.posting{display:block;color:#CFE6DB;font-weight:600;font-size:13px;letter-spacing:-.01em}
+.posting.local{color:#F0C86A}
+
 #saving{position:fixed;right:20px;bottom:20px;background:var(--surface);border:1px solid var(--line);
   border-radius:20px;padding:7px 15px;font-size:13px;color:var(--text-2);z-index:45;
   display:none;align-items:center;gap:9px;box-shadow:var(--sh-md)}
@@ -521,7 +524,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v3.4';
+const APP_VERSION = 'v3.5';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -3494,9 +3497,13 @@ function startApp(){
   applyTheme(document.body.classList.contains('dark') ? 'dark' : 'light');
   initScope();
   drawScopeBar();
-  $('role-lbl').innerHTML = esc(roleName(ME.role)
-      + (ME.portfolio_id ? ' · ' + portName(ME.portfolio_id) : '')
-      + ' · ' + APP_VERSION)
+  const posting = roleName(ME.role)
+      + (ME.area_id ? ' \u00b7 ' + areaName(ME.area_id) : (roleTakesArea(ME.role) ? ' \u00b7 no area set' : ''))
+      + (ME.portfolio_id ? ' \u00b7 ' + portName(ME.portfolio_id) : '');
+  $('role-lbl').innerHTML =
+    '<span class="posting' + (LOCAL ? ' local' : '') + '">' + esc(LOCAL ? 'Local mode \u2014 not signed in' : posting) + '</span>'
+    + '<span class="mini" style="display:block;margin-top:3px">' + esc(APP_VERSION)
+      + (LOCAL ? '' : ' \u00b7 ' + esc(ME.name || '')) + '</span>'
     + (LOCAL ? '<br><span style="cursor:pointer;text-decoration:underline" onclick="resetLocal()">Clear local records</span>' : '');
   if (!pageAllowed(page)) page = 'dash';
   drawNav(); render();
