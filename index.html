@@ -576,7 +576,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v6.3';
+const APP_VERSION = 'v6.6';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -1418,7 +1418,7 @@ function aceClasses(d){
 /* ---------- teacher register: out to Excel, in from Excel ---------- */
 async function exportAceTeachers(){
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
-  const d = aceState.data;
+  const d = await aceData();
   const pay = canPortfolioMoney('ace');
   const rows = teacherOrder(d.teachers);
   if (!rows.length){ toast('No teachers to export'); return; }
@@ -1488,7 +1488,7 @@ async function exportAceTeachers(){
 
 async function exportAceBaseline(){
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
-  const d = aceState.data;
+  const d = await aceData();
   const roll = rollOrder(d.students.filter(s => s.status !== 'left'));
   if (!roll.length){ toast('Nobody on a roll'); return; }
   const wb = new ExcelJS.Workbook();
@@ -1634,7 +1634,7 @@ function redrawRegister(){
 }
 
 async function toggleAtt(sessionId, studentId){
-  const d = aceState.data;
+  const d = await aceData();
   const existing = d.attendance.find(a => a.session_id === sessionId && a.ace_student_id === studentId);
   savingStart();
   try{
@@ -1660,7 +1660,7 @@ async function toggleAtt(sessionId, studentId){
 }
 
 async function addAceDate(){
-  const d = aceState.data;
+  const d = await aceData();
   const cls = d.classes.find(c => c.id === aceState.classId);
   const suggested = aceState.year + '-' + String(aceState.month).padStart(2,'0') + '-'
     + String(new Date().getDate()).padStart(2,'0');
@@ -1698,7 +1698,7 @@ async function addAceDate(){
    the dates met across the top, a tick or a dash, and a total. */
 async function exportAceAttendance(){
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
-  const d = aceState.data;
+  const d = await aceData();
   const cls = d.classes.find(c => c.id === aceState.classId);
   const roll = rollOrder(d.students.filter(x => x.class_id === cls.id && x.status !== 'left'));
   const dates = aceMonthDates(d, cls.id);
@@ -1887,7 +1887,7 @@ function aceAssess(d){
 }
 
 async function saveBaseline(studentId, field, value){
-  const d = aceState.data;
+  const d = await aceData();
   const existing = d.assessments.find(x => x.ace_student_id === studentId && x.kind === 'baseline');
   if (field === 'score' && value !== ''){
     const n = num(value);
@@ -1986,7 +1986,7 @@ async function aceMoney(d){
 }
 
 async function payAceSalary(){
-  const d = aceState.data;
+  const d = await aceData();
   const active = d.teachers.filter(t => t.status === 'active');
   if (!active.length){ toast('Add a teacher first'); return; }
   openModal('Record teacher salary',
@@ -2015,7 +2015,7 @@ async function payAceSalary(){
 }
 
 async function payAceTransport(){
-  const d = aceState.data;
+  const d = await aceData();
   openModal('Record transport or miscellaneous',
     '<div class="grid g3">'
     + fld('at-amount','Amount (Rs)', '', 'number')
@@ -2145,7 +2145,7 @@ async function editAceStudent(id, classId){
 
 /* Taking the register: the class roll with a tick against each name. */
 async function editAceSession(id){
-  const d = aceState.data;
+  const d = await aceData();
   if (!d.classes.length){ toast('Add a class first'); return; }
   const x = id ? d.sessions.find(y => y.id === id)
                : { class_id:d.classes[0].id, held_on:todayISO(), teacher_present:true };
@@ -2243,7 +2243,7 @@ async function editAceTraining(id){
 
 /* Which teachers attended a training. */
 async function markTraining(id){
-  const d = aceState.data;
+  const d = await aceData();
   const t = d.trainings.find(x => x.id === id);
   const marks = d.tAtt.filter(a => a.training_id === id);
   const teachers = d.teachers.filter(x => x.status === 'active');
@@ -2596,7 +2596,7 @@ function afgFees(d){
 }
 
 async function saveAfgFee(studentId, field, value){
-  const d = afgState.data;
+  const d = await afgData();
   const m = afgState.month, y = afgState.year;
   let row = d.fees.find(f => f.student_id === studentId && f.month === m && f.year === y);
   const patch = {};
@@ -2622,7 +2622,7 @@ async function saveAfgFee(studentId, field, value){
 }
 
 async function fillAfgFees(){
-  const d = afgState.data;
+  const d = await afgData();
   const m = afgState.month, y = afgState.year;
   const missing = d.students.filter(st => st.status !== 'left'
     && !d.fees.some(f => f.student_id === st.id && f.month === m && f.year === y));
@@ -2739,7 +2739,7 @@ async function editAfgStudent(id){
 }
 
 async function editAfgSupport(id){
-  const d = afgState.data;
+  const d = await afgData();
   const x = id ? d.support.find(y => y.id === id) : { kind:'books_copies', given_on:todayISO() };
   openModal(id ? 'Edit support' : 'Record support given',
     '<div class="grid g3">'
@@ -2763,7 +2763,7 @@ async function editAfgSupport(id){
 }
 
 async function editAfgResult(id){
-  const d = afgState.data;
+  const d = await afgData();
   const x = id ? d.results.find(y => y.id === id)
                : { total_marks:100, year:afgState.year, taken_on:todayISO() };
   openModal(id ? 'Edit result' : 'Add a result',
@@ -2823,7 +2823,7 @@ async function afgSheet(title, header, rows, filename, widths){
 }
 
 async function exportAfgRoll(){
-  const d = afgState.data;
+  const d = await afgData();
   const rows = afgRollOrder(d.students).map((x,i) => [
     x.serial_no || i+1, x.full_name, x.father_name || x.guardian_name || '',
     x.class_grade || '', x.section || '', x.admission_on || '',
@@ -2840,7 +2840,7 @@ async function exportAfgRoll(){
 }
 
 async function exportAfgFees(){
-  const d = afgState.data;
+  const d = await afgData();
   const m = afgState.month, y = afgState.year;
   const roll = afgRollOrder(d.students.filter(s => s.status !== 'left'));
   const rows = roll.map((st,i) => {
@@ -3078,7 +3078,7 @@ async function editEngClass(id, areaId){
 }
 
 async function editEngStudent(id){
-  const d = engState.data;
+  const d = await engData();
   const x = id ? d.students.find(y => y.id === id)
                : { status:'active', class_id:engState.classId, enrolled_on:todayISO() };
   openModal(id ? 'Edit student' : 'Add a student',
@@ -3105,7 +3105,7 @@ async function editEngStudent(id){
 }
 
 async function exportEngRoll(){
-  const d = engState.data;
+  const d = await engData();
   const cls = d.classes.find(c => c.id === engState.classId);
   if (!cls){ toast('Pick a class first'); return; }
   const roll = d.students.filter(s => s.class_id === cls.id)
@@ -3349,7 +3349,7 @@ async function editClaim(id, kind){
 /* The reimbursement tab inside Afghan Matters shows the same claims,
    narrowed to the Afghan areas, so the two never drift apart. */
 function afgClaims(d){
-  const claims = (natState.data || []).filter(c =>
+  const claims = ((d && d.claims) || natState.data || []).filter(c =>
     ['kharadar','clifton'].indexOf(c.area_id) >= 0);
   const claimed = natSum(claims,'amount_claimed') || natSum(claims,'amount');
   const got = natSum(claims,'amount_received');
@@ -3371,7 +3371,7 @@ function afgClaims(d){
 
 async function exportClaims(){
   const kind = natState.tab === 'overview' ? null : natState.tab;
-  const rows = (natState.data || []).filter(c => !kind || c.kind === kind);
+  const rows = (await natData()).filter(c => !kind || c.kind === kind);
   if (!rows.length){ toast('Nothing to export'); return; }
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
   const wb = new ExcelJS.Workbook();
@@ -3402,6 +3402,21 @@ async function exportClaims(){
   download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
     'National_Reimbursement' + (kind ? '_' + kind : '') + '.xlsx');
   toast('Downloaded');
+}
+
+
+/* A screen normally loads its own data, but a form can also be opened
+   straight from the jump bar before that has finished. These fetch on
+   demand so nothing depends on a page having been drawn first. */
+async function aceData(){ if (!aceState.data) aceState.data = await aceLoad(); return aceState.data; }
+async function afgData(){ if (!afgState.data) afgState.data = await afghanAllLoad(); return afgState.data; }
+async function engData(){
+  if (!engState.data) engState.data = (await afgData()).eng;
+  return engState.data;
+}
+async function natData(){
+  if (!natState.data) natState.data = await sList('national_claims').catch(() => []);
+  return natState.data;
 }
 
 /* =====================================================================
@@ -3710,6 +3725,10 @@ const WORKSPACES = {
 };
 const WORKSPACE_ORDER = ['area','ace','afghan','national'];
 
+/* ACE classes run for these grades and subjects. */
+const ACE_GRADES = ['6','7','8'];
+const ACE_SUBJECTS = ['Maths','Science','English'];
+
 /* A portfolio workspace is open to you if your posting reaches it. */
 function workspaceAllowed(key){
   const w = WORKSPACES[key];
@@ -3811,7 +3830,7 @@ function setScope(what, value){
   // quietly filtering the board screens behind the same menu.
   if (what === 'portfolio'){
     if (WORKSPACES[value]){ enterWorkspace(value); return; }
-    if (workspace !== 'board'){ workspace = 'board'; page = 'dash'; drawNav(); }
+    if (workspace !== 'area'){ workspace = 'area'; page = 'dash'; drawNav(); }
   }
   drawScopeBar(); render();
 }
@@ -3862,6 +3881,7 @@ function drawNav(){
 }
 function drawWorkspaceNav(){
   const w = WORKSPACES[workspace];
+  if (!w || w.board){ workspace = 'area'; drawNav(); return; }
   $('nav').innerHTML =
     '<a class="back" onclick="goHome()"><span>&larr; All portfolios</span></a>'
     + '<div class="nav-head">' + esc(w.title) + '</div>'
@@ -3874,7 +3894,7 @@ function go(id){
   if (id === 'home'){ goHome(); return; }
   const asWorkspace = { ace:'ace', afghan:'afghan', national:'national' }[id];
   if (asWorkspace){ enterWorkspace(asWorkspace); return; }
-  if (workspace !== 'board' && id !== 'ace') workspace = 'board';
+  if (workspace !== 'area') workspace = 'area';
   if (!pageAllowed(id)){
     toast('That is outside what your posting covers');
     id = 'dash';
@@ -4706,7 +4726,7 @@ const rs = n => 'Rs ' + money(n);
 async function shareContent(kind, id){
   const sign = ['', 'Regards,', ME.name || 'Local Education Board, Kharadar'];
   if (kind === 'nat_claims'){
-    const rows = natState.data || [];
+    const rows = await natData();
     const claimed = natSum(rows,'amount_claimed') || natSum(rows,'amount');
     const got = natSum(rows,'amount_received');
     return { subject:'National reimbursement \u2014 position',
@@ -4726,7 +4746,7 @@ async function shareContent(kind, id){
       attach:'Press Export first, then attach the sheet.' };
   }
   if (kind === 'afg_roll' || kind === 'afg_fees' || kind === 'afg_support' || kind === 'afg_results'){
-    const d = afgState.data;
+    const d = await afgData();
     const roll = afgRollOrder(d.students.filter(x => x.status !== 'left'));
     const head2 = 'Oklife School, ' + areaName('clifton') + ' area';
     if (kind === 'afg_roll')
@@ -4778,7 +4798,7 @@ async function shareContent(kind, id){
         '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
   }
   if (kind === 'eng_classes'){
-    const d = engState.data;
+    const d = await engData();
     const inTerm = d.classes.filter(c => c.term === engState.term && c.year === engState.year);
     return { subject:'Afghan English Classes \u2014 ' + termName(engState.term) + ' ' + engState.year,
       body:['Assalam-o-Alaikum,','',
@@ -4793,7 +4813,7 @@ async function shareContent(kind, id){
         '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
   }
   if (kind === 'ace_teachers'){
-    const d = aceState.data;
+    const d = await aceData();
     const list = teacherOrder(d.teachers.filter(t => t.status === 'active'));
     const trained = new Set(d.tAtt.filter(a => a.attended).map(a => a.teacher_id));
     return { subject:'ACE Classes \u2014 teacher register',
@@ -4814,8 +4834,10 @@ async function shareContent(kind, id){
       attach:'Press Export first if you want to attach the full register with payment details.' };
   }
   if (kind === 'ace_attendance'){
-    const d = aceState.data;
+    const d = await aceData();
     const cls = d.classes.find(c => c.id === aceState.classId) || d.classes[0];
+    if (!cls) return { subject:'ACE Classes \u2014 attendance',
+      body:'There are no ACE classes set up yet, so there is no attendance to send.' };
     const dates = aceMonthDates(d, cls.id);
     const roll = rollOrder(d.students.filter(x => x.class_id === cls.id && x.status !== 'left'));
     const total = st => dates.filter(x => (d.attendance.find(a =>
@@ -4830,7 +4852,7 @@ async function shareContent(kind, id){
       attach:'Press Download sheet first, then attach it to the email.' };
   }
   if (kind === 'ace_baseline'){
-    const d = aceState.data;
+    const d = await aceData();
     const roll = rollOrder(d.students.filter(s => s.status !== 'left'));
     const scoreOf = st => {
       const a = d.assessments.find(x => x.ace_student_id === st.id && x.kind === 'baseline');
@@ -4852,7 +4874,7 @@ async function shareContent(kind, id){
         '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
   }
   if (kind === 'ace_training'){
-    const d = aceState.data;
+    const d = await aceData();
     const trained = new Set(d.tAtt.filter(a => a.attended).map(a => a.teacher_id));
     return { subject:'ACE Classes \u2014 teacher training',
       body:['Assalam-o-Alaikum,','',
@@ -4867,6 +4889,7 @@ async function shareContent(kind, id){
   }
   if (kind === 'directive'){
     const x = (await db.list('directives')).find(y => y.id === id);
+    if (!x) return { subject:'', body:'That record could not be found.' };
     return { subject:(DIRECTIVE_KINDS[x.kind] || 'Directive') + ': ' + x.title,
       body:['Assalam-o-Alaikum,','',
         'From ' + JURISDICTION_NAME + ':','',
@@ -4882,6 +4905,7 @@ async function shareContent(kind, id){
   }
   if (kind === 'program'){
     const p = (await db.list('programs')).find(x => x.id === id);
+    if (!p) return { subject:'', body:'That record could not be found.' };
     return { subject:'Programme: ' + p.title,
       body:['Assalam-o-Alaikum,','',
         'Details of a programme from the Local Education Board, Kharadar:','',
@@ -4896,6 +4920,7 @@ async function shareContent(kind, id){
   }
   if (kind === 'prf'){
     const p = (await db.list('prf_requests')).find(x => x.id === id);
+    if (!p) return { subject:'', body:'That record could not be found.' };
     const lead = p.event_date ? daysBetween(p.submitted_on || todayISO(), p.event_date) : null;
     return { subject:'Permission request: ' + p.program_name,
       body:['Assalam-o-Alaikum,','',
@@ -4927,6 +4952,7 @@ async function shareContent(kind, id){
         .concat(sign).join('\n') };
   }
   if (kind === 'report'){
+    if (!repState.data) repState.data = await buildQuarter(repState.quarter, repState.year);
     const d = repState.data;
     const label = 'Quarter ' + d.q + ' ' + d.y;
     return { subject:'Quarterly report \u2014 ' + label,
@@ -5267,7 +5293,7 @@ async function runImport(){
   if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
 
   if (IMPORT.target === 'eng_students'){
-    const d = engState.data;
+    const d = await engData();
     const cls = d.classes.find(c => c.id === IMPORT.classId) || d.classes[0];
     const fresh = rows.map(r => Object.assign({}, r, {
       status:'active', class_id:cls ? cls.id : null,
