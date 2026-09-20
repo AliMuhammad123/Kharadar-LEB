@@ -524,7 +524,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v4.0';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -599,7 +599,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -1056,6 +1056,657 @@ async function pageAreas(v){
   v.innerHTML = h;
 }
 
+
+/* =====================================================================
+   ACE Classes
+   ---------------------------------------------------------------------
+   Teachers, classes and the students on their roll; a register for every
+   sitting; trainings with their own attendance; a baseline assessment out
+   of thirty; and a folder of pictures against each class and sitting.
+   Salaries and transport are recorded in the funds ledger rather than
+   here, so the money is counted once and the finance gate still applies.
+   ===================================================================== */
+const aceState = { tab:'overview', classId:null, month:new Date().getMonth()+1, year:new Date().getFullYear() };
+const ACE_TABS = [['overview','Overview'],['classes','Classes & students'],
+                  ['register','Attendance'],['training','Teacher training'],
+                  ['assess','Baseline'],['money','Salary & transport']];
+
+const pct = (a,b) => b ? Math.round(a / b * 100) : 0;
+
+async function aceLoad(){
+  const [teachers, classes, students, sessions, trainings] = await Promise.all([
+    sList('ace_teachers'), sList('ace_classes'), sList('ace_students'),
+    sList('ace_sessions'), sList('ace_trainings')
+  ]);
+  const [attendance, tAtt, assessments] = await Promise.all([
+    db.listIn('ace_attendance', 'session_id', sessions.map(x => x.id)),
+    db.listIn('ace_training_attendance', 'training_id', trainings.map(x => x.id)),
+    sList('ace_assessments')
+  ]);
+  return { teachers, classes, students, sessions, trainings, attendance, tAtt, assessments };
+}
+
+async function pageAce(v){
+  const d = await aceLoad();
+  aceState.data = d;
+
+  let h = head('ACE Classes',
+    'Classes, the students on the roll, attendance for every sitting, teacher training, and the baseline assessment.',
+    aceTabActions());
+  h += '<div class="panel"><div class="body flush"><div class="tabs">'
+    + ACE_TABS.map(t => '<button class="' + (aceState.tab === t[0] ? 'on' : '') + '" '
+        + 'onclick="aceState.tab=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
+    + '</div></div></div>';
+
+  if (aceState.tab === 'overview')  h += aceOverview(d);
+  if (aceState.tab === 'classes')   h += aceClasses(d);
+  if (aceState.tab === 'register')  h += aceRegister(d);
+  if (aceState.tab === 'training')  h += aceTraining(d);
+  if (aceState.tab === 'assess')    h += aceAssess(d);
+  if (aceState.tab === 'money')     h += await aceMoney(d);
+  v.innerHTML = h;
+}
+
+function aceTabActions(){
+  const t = aceState.tab;
+  if (t === 'classes')  return '<button class="btn ghost" onclick="editAceTeacher()">Add teacher</button>'
+                             + '<button class="btn" onclick="editAceClass()">Add class</button>';
+  if (t === 'register') return '<button class="btn" onclick="editAceSession()">Take a register</button>';
+  if (t === 'training') return '<button class="btn" onclick="editAceTraining()">Add a training</button>';
+  if (t === 'money')    return '<button class="btn" onclick="payAceSalary()">Record salary</button>'
+                             + '<button class="btn ghost" onclick="payAceTransport()">Transport & misc</button>';
+  return '';
+}
+
+/* ---------- overview ---------- */
+function aceOverview(d){
+  const active = d.students.filter(s => s.status !== 'left');
+  const present = d.attendance.filter(a => a.present).length;
+  const marked  = d.attendance.length;
+  const held    = d.sessions.length;
+  const teacherHeld = d.sessions.filter(s => s.teacher_present).length;
+  const trained = new Set(d.tAtt.filter(a => a.attended).map(a => a.teacher_id)).size;
+  const scored  = d.assessments.filter(a => a.kind === 'baseline' && a.score !== null && a.score !== undefined);
+  const avg     = scored.length ? (scored.reduce((s,a) => s + num(a.score), 0) / scored.length) : 0;
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Students on the roll</div><div class="v">' + active.length + '</div></div>'
+    + '<div><div class="k">Student attendance</div><div class="v">' + (marked ? pct(present, marked) + '%' : '\u2014') + '</div></div>'
+    + '<div><div class="k">Teacher attendance</div><div class="v">' + (held ? pct(teacherHeld, held) + '%' : '\u2014') + '</div></div>'
+    + '<div><div class="k">Teachers trained</div><div class="v">' + trained + ' of ' + d.teachers.length + '</div></div>'
+    + '</div>';
+  h += '<div class="stats">'
+    + '<div><div class="k">Classes running</div><div class="v">' + d.classes.filter(c => c.status === 'running').length + '</div></div>'
+    + '<div><div class="k">Sittings held</div><div class="v">' + held + '</div></div>'
+    + '<div><div class="k">Trainings held</div><div class="v">' + d.trainings.length + '</div></div>'
+    + '<div><div class="k">Average baseline</div><div class="v">' + (scored.length ? avg.toFixed(1) + ' / 30' : '\u2014') + '</div></div>'
+    + '</div>';
+
+  if (!d.classes.length)
+    return h + '<div class="panel"><div class="empty"><p>No ACE classes recorded yet.</p>'
+      + '<button class="btn" onclick="aceState.tab=\'classes\';render()">Set up the first class</button></div></div>';
+
+  h += '<div class="panel"><h2>Class by class</h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Class</th><th>Teacher</th><th class="num">Students</th><th class="num">Sittings</th>'
+    + '<th class="num">Attendance</th><th class="num">Avg baseline</th><th>Pictures</th><th>Status</th></tr></thead><tbody>'
+    + d.classes.map(c => {
+        const roll = d.students.filter(s => s.class_id === c.id && s.status !== 'left');
+        const sess = d.sessions.filter(s => s.class_id === c.id);
+        const ids  = sess.map(s => s.id);
+        const att  = d.attendance.filter(a => ids.indexOf(a.session_id) >= 0);
+        const sc   = d.assessments.filter(a => a.kind === 'baseline'
+                       && roll.some(r => r.id === a.ace_student_id) && a.score !== null);
+        const cavg = sc.length ? (sc.reduce((t,a) => t + num(a.score), 0) / sc.length) : null;
+        const teacher = d.teachers.find(t => t.id === c.teacher_id);
+        return '<tr><td><b>' + esc(c.name) + '</b>'
+          + (c.venue ? '<div class="mini">' + esc(c.venue) + '</div>' : '') + '</td>'
+          + '<td>' + esc(teacher ? teacher.full_name : '\u2014') + '</td>'
+          + '<td class="num">' + roll.length + '</td>'
+          + '<td class="num">' + sess.length + '</td>'
+          + '<td class="num">' + (att.length ? pct(att.filter(a => a.present).length, att.length) + '%' : '\u2014') + '</td>'
+          + '<td class="num">' + (cavg !== null ? cavg.toFixed(1) : '\u2014') + '</td>'
+          + '<td>' + (c.drive_url ? '<a href="' + esc(c.drive_url) + '" target="_blank" rel="noopener">Open folder</a>' : '<span class="mini">none</span>') + '</td>'
+          + '<td>' + statusTag(c.status === 'running' ? 'ongoing' : c.status) + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ---------- classes, teachers, roll ---------- */
+function aceClasses(d){
+  let h = '<div class="panel"><h2>Teachers<span class="mini">' + d.teachers.length + '</span></h2>'
+    + '<div class="body flush">'
+    + (d.teachers.length ? '<div class="scroll"><table class="ledger"><thead><tr><th>Name</th><th>Contact</th>'
+        + '<th>Qualification</th><th class="num">Monthly salary</th><th class="num">Trainings attended</th><th>Status</th><th></th></tr></thead><tbody>'
+      + d.teachers.map(t => {
+          const trainings = d.tAtt.filter(a => a.teacher_id === t.id && a.attended).length;
+          return '<tr><td>' + esc(t.full_name) + '</td><td>' + esc(t.contact || '\u2014') + '</td>'
+            + '<td>' + esc(t.qualification || '\u2014') + '</td>'
+            + '<td class="num">' + (num(t.monthly_salary) ? 'Rs ' + money(t.monthly_salary) : '\u2014') + '</td>'
+            + '<td class="num">' + trainings + '</td>'
+            + '<td>' + (t.status === 'active' ? '<span class="tag t-green">Active</span>' : '<span class="tag t-grey">Left</span>') + '</td>'
+            + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editAceTeacher(\'' + t.id + '\')">Edit</button> '
+            + '<button class="btn sm danger" onclick="delRow(\'ace_teachers\',\'' + t.id + '\')">&times;</button></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty"><p>No teachers yet.</p><button class="btn" onclick="editAceTeacher()">Add a teacher</button></div>')
+    + '</div></div>';
+
+  d.classes.forEach(c => {
+    const roll = d.students.filter(s => s.class_id === c.id);
+    const teacher = d.teachers.find(t => t.id === c.teacher_id);
+    h += '<div class="panel"><h2><span>' + esc(c.name) + '</span>'
+      + '<span class="mini">' + esc(teacher ? teacher.full_name : 'no teacher set')
+        + (c.days ? ' \u00b7 ' + esc(c.days) : '') + (c.timing ? ' \u00b7 ' + esc(c.timing) : '') + '</span>'
+      + '<span class="actions">'
+      + (c.drive_url ? '<a class="btn sm ghost" href="' + esc(c.drive_url) + '" target="_blank" rel="noopener">Pictures</a> ' : '')
+      + '<button class="btn sm ghost" onclick="editAceStudent(null,\'' + c.id + '\')">Add student</button> '
+      + '<button class="btn sm ghost" onclick="editAceClass(\'' + c.id + '\')">Edit class</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'ace_classes\',\'' + c.id + '\')">&times;</button>'
+      + '</span></h2><div class="body flush">'
+      + (roll.length ? '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th><th>Student</th>'
+          + '<th>Guardian</th><th>School</th><th>Grade</th><th>Enrolled</th><th></th></tr></thead><tbody>'
+        + roll.map((r,i) => '<tr><td class="sn">' + (i+1) + '</td><td>' + esc(r.full_name)
+            + (r.status === 'left' ? ' <span class="tag t-grey">left</span>' : '') + '</td>'
+            + '<td>' + esc(r.guardian_name || '\u2014') + '</td><td>' + esc(r.school || '\u2014') + '</td>'
+            + '<td>' + esc(r.grade || '\u2014') + '</td><td>' + fmtDate(r.enrolled_on) + '</td>'
+            + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editAceStudent(\'' + r.id + '\')">Edit</button> '
+            + '<button class="btn sm danger" onclick="delRow(\'ace_students\',\'' + r.id + '\')">&times;</button></td></tr>').join('')
+        + '</tbody></table></div>'
+        : '<div class="empty"><p>Nobody on the roll yet.</p>'
+          + '<button class="btn" onclick="editAceStudent(null,\'' + c.id + '\')">Add the first student</button></div>')
+      + '</div></div>';
+  });
+  if (!d.classes.length)
+    h += '<div class="panel"><div class="empty"><p>No classes yet.</p>'
+      + '<button class="btn" onclick="editAceClass()">Add a class</button></div></div>';
+  return h;
+}
+
+
+/* ---------- attendance register ---------- */
+function aceRegister(d){
+  const sessions = d.sessions.slice().sort((a,b) => (b.held_on||'').localeCompare(a.held_on||''));
+  if (!d.classes.length)
+    return '<div class="panel"><div class="empty"><p>Add a class before taking a register.</p></div></div>';
+  if (!sessions.length)
+    return '<div class="panel"><div class="empty"><p>No registers taken yet.</p>'
+      + '<button class="btn" onclick="editAceSession()">Take the first register</button></div></div>';
+
+  return '<div class="panel"><h2>Registers<span class="mini">' + sessions.length + ' sittings</span></h2>'
+    + '<div class="body flush">'
+    + tableTools('tbl-ace-sess', 'Search by class, date or topic\u2026', sessions.length + ' rows')
+    + '<div class="scroll' + (sessions.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-ace-sess">'
+    + '<thead><tr><th>Date</th><th>Class</th><th>Topic</th><th>Teacher</th>'
+    + '<th class="num">Present</th><th class="num">Attendance</th><th>Pictures</th><th></th></tr></thead><tbody>'
+    + sessions.map(x => {
+        const c = d.classes.find(y => y.id === x.class_id);
+        const att = d.attendance.filter(a => a.session_id === x.id);
+        const here = att.filter(a => a.present).length;
+        return '<tr><td>' + fmtDate(x.held_on) + '</td>'
+          + '<td>' + esc(c ? c.name : '\u2014') + '</td>'
+          + '<td>' + esc(x.topic || '\u2014') + '</td>'
+          + '<td>' + (x.teacher_present ? '<span class="tag t-green">Present</span>'
+                                        : '<span class="tag t-red">Absent</span>') + '</td>'
+          + '<td class="num">' + here + ' of ' + att.length + '</td>'
+          + '<td class="num">' + (att.length ? pct(here, att.length) + '%' : '\u2014') + '</td>'
+          + '<td>' + (x.drive_url ? '<a href="' + esc(x.drive_url) + '" target="_blank" rel="noopener">Open</a>' : '<span class="mini">none</span>') + '</td>'
+          + '<td style="width:1%;white-space:nowrap">'
+          + '<button class="btn sm ghost" onclick="editAceSession(\'' + x.id + '\')">Open</button> '
+          + '<button class="btn sm danger" onclick="delRow(\'ace_sessions\',\'' + x.id + '\')">&times;</button></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+}
+
+/* ---------- teacher training ---------- */
+function aceTraining(d){
+  if (!d.trainings.length)
+    return '<div class="panel"><div class="empty"><p>No trainings recorded yet.</p>'
+      + '<button class="btn" onclick="editAceTraining()">Add a training</button></div></div>';
+
+  const trained = new Set(d.tAtt.filter(a => a.attended).map(a => a.teacher_id));
+  let h = '<div class="stats">'
+    + '<div><div class="k">Trainings held</div><div class="v">' + d.trainings.length + '</div></div>'
+    + '<div><div class="k">Online</div><div class="v">' + d.trainings.filter(t => t.mode === 'online').length + '</div></div>'
+    + '<div><div class="k">Teachers trained</div><div class="v">' + trained.size + '</div></div>'
+    + '<div><div class="k">Of all teachers</div><div class="v">' + pct(trained.size, d.teachers.length) + '%</div></div>'
+    + '</div>';
+
+  h += '<div class="panel"><h2>Trainings</h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Date</th><th>Training</th><th>Mode</th><th>Trainer</th>'
+    + '<th class="num">Attended</th><th>Link</th><th></th></tr></thead><tbody>'
+    + d.trainings.slice().sort((a,b) => (b.held_on||'').localeCompare(a.held_on||'')).map(t => {
+        const att = d.tAtt.filter(a => a.training_id === t.id);
+        const here = att.filter(a => a.attended).length;
+        return '<tr><td>' + fmtDate(t.held_on) + '</td>'
+          + '<td>' + esc(t.title) + (t.duration ? '<div class="mini">' + esc(t.duration) + '</div>' : '') + '</td>'
+          + '<td>' + (t.mode === 'online' ? '<span class="tag t-blue">Online</span>'
+                                          : '<span class="tag t-grey">In person</span>') + '</td>'
+          + '<td>' + esc(t.trainer || '\u2014') + '</td>'
+          + '<td class="num">' + here + ' of ' + (att.length || d.teachers.length) + '</td>'
+          + '<td>' + (t.link ? '<a href="' + esc(t.link) + '" target="_blank" rel="noopener">Open</a>' : '\u2014') + '</td>'
+          + '<td style="width:1%;white-space:nowrap">'
+          + '<button class="btn sm ghost" onclick="markTraining(\'' + t.id + '\')">Attendance</button> '
+          + '<button class="btn sm ghost" onclick="editAceTraining(\'' + t.id + '\')">Edit</button> '
+          + '<button class="btn sm danger" onclick="delRow(\'ace_trainings\',\'' + t.id + '\')">&times;</button></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+
+  h += '<div class="panel"><h2>Teacher by teacher</h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Teacher</th><th class="num">Trainings attended</th><th class="num">Of those held</th><th>Latest</th></tr></thead><tbody>'
+    + d.teachers.map(t => {
+        const mine = d.tAtt.filter(a => a.teacher_id === t.id && a.attended);
+        const last = mine.map(a => (d.trainings.find(x => x.id === a.training_id) || {}).held_on)
+                         .filter(Boolean).sort().pop();
+        return '<tr><td>' + esc(t.full_name) + '</td><td class="num">' + mine.length + '</td>'
+          + '<td class="num">' + pct(mine.length, d.trainings.length) + '%</td>'
+          + '<td>' + (last ? fmtDate(last) : '\u2014') + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* ---------- baseline assessment, out of thirty ---------- */
+function aceAssess(d){
+  const roll = d.students.filter(s => s.status !== 'left');
+  if (!roll.length)
+    return '<div class="panel"><div class="empty"><p>Nobody on a roll yet.</p></div></div>';
+
+  const scored = d.assessments.filter(a => a.kind === 'baseline' && a.score !== null && a.score !== undefined);
+  const avg = scored.length ? scored.reduce((s,a) => s + num(a.score), 0) / scored.length : 0;
+  const band = sc => sc === null ? ['t-grey','Not taken']
+    : sc >= 24 ? ['t-green','Strong'] : sc >= 15 ? ['t-blue','Fair'] : ['t-red','Needs support'];
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Assessed</div><div class="v">' + scored.length + ' of ' + roll.length + '</div></div>'
+    + '<div><div class="k">Average</div><div class="v">' + (scored.length ? avg.toFixed(1) + ' / 30' : '\u2014') + '</div></div>'
+    + '<div><div class="k">Scoring 24+</div><div class="v">' + scored.filter(a => num(a.score) >= 24).length + '</div></div>'
+    + '<div><div class="k">Below 15</div><div class="v">' + scored.filter(a => num(a.score) < 15).length + '</div></div>'
+    + '</div>';
+
+  h += '<div class="panel"><h2>Baseline, out of 30</h2><div class="body flush">'
+    + tableTools('tbl-ace-base', 'Search students\u2026', roll.length + ' students')
+    + '<div class="scroll' + (roll.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-ace-base">'
+    + '<thead><tr><th class="sn">#</th><th>Student</th><th>Class</th><th class="num" style="width:120px">Score</th>'
+    + '<th>Band</th><th>Taken on</th><th>Remark</th></tr></thead><tbody>'
+    + roll.map((r,i) => {
+        const a = d.assessments.find(x => x.ace_student_id === r.id && x.kind === 'baseline');
+        const sc = a && a.score !== null && a.score !== undefined ? num(a.score) : null;
+        const b = band(sc);
+        const c = d.classes.find(y => y.id === r.class_id);
+        return '<tr><td class="sn">' + (i+1) + '</td><td>' + esc(r.full_name) + '</td>'
+          + '<td>' + esc(c ? c.name : '\u2014') + '</td>'
+          + '<td class="num"><input type="number" min="0" max="30" step="0.5" style="text-align:right" '
+            + 'value="' + (sc === null ? '' : esc(sc)) + '" '
+            + 'onchange="saveBaseline(\'' + r.id + '\',\'score\',this.value)"></td>'
+          + '<td><span class="tag ' + b[0] + '">' + b[1] + '</span></td>'
+          + '<td><input type="date" value="' + esc((a && a.taken_on) || '') + '" '
+            + 'onchange="saveBaseline(\'' + r.id + '\',\'taken_on\',this.value)"></td>'
+          + '<td><input value="' + esc((a && a.remark) || '') + '" '
+            + 'onchange="saveBaseline(\'' + r.id + '\',\'remark\',this.value)"></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+async function saveBaseline(studentId, field, value){
+  const d = aceState.data;
+  const existing = d.assessments.find(x => x.ace_student_id === studentId && x.kind === 'baseline');
+  if (field === 'score' && value !== ''){
+    const n = num(value);
+    if (n < 0 || n > 30){ toast('The baseline is out of 30'); render(); return; }
+  }
+  const patch = {};
+  patch[field] = field === 'score' ? (value === '' ? null : num(value)) : (value || null);
+  savingStart();
+  try{
+    if (existing){
+      await db.update('ace_assessments', existing.id, patch);
+      Object.assign(existing, patch);
+    } else {
+      const row = stampArea(Object.assign({ ace_student_id:studentId, kind:'baseline', max_score:30 }, patch));
+      d.assessments.push(await db.insert('ace_assessments', row));
+    }
+    savingDone(true);
+    if (field === 'score') render();
+  }catch(err){
+    savingDone(false);
+    toast('Could not save that: ' + (err.message || err));
+  }
+}
+
+
+/* ---------- salary, transport and miscellaneous ---------- */
+async function aceMoney(d){
+  if (!canFinance())
+    return '<div class="panel"><div class="empty"><p>Salary and transport figures are part of the '
+      + 'board\u2019s finances, which your posting does not cover.</p></div></div>';
+
+  const pays = (await sList('disbursements')).filter(p =>
+    p.category === 'teacher_salary' || p.category === 'transport_misc');
+  const inMonth = pays.filter(p => {
+    const dt = p.paid_on || '';
+    return dt.slice(0,7) === aceState.year + '-' + String(aceState.month).padStart(2,'0');
+  });
+  const salary   = inMonth.filter(p => p.category === 'teacher_salary').reduce((s,p) => s + num(p.amount), 0);
+  const transport= inMonth.filter(p => p.category === 'transport_misc').reduce((s,p) => s + num(p.amount), 0);
+  const due = d.teachers.filter(t => t.status === 'active').reduce((s,t) => s + num(t.monthly_salary), 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">' + MONTHS[aceState.month-1] + ' salary paid</div><div class="v">Rs ' + money(salary) + '</div></div>'
+    + '<div><div class="k">Salary due this month</div><div class="v">Rs ' + money(due) + '</div></div>'
+    + '<div><div class="k">Transport &amp; misc</div><div class="v">Rs ' + money(transport) + '</div></div>'
+    + '<div><div class="k">Month total</div><div class="v">Rs ' + money(salary + transport) + '</div></div>'
+    + '</div>';
+
+  if (due > salary && salary > 0)
+    h += '<div class="note"><b>Rs ' + money(due - salary) + ' of salary still to pay for '
+       + MONTHS[aceState.month-1] + '.</b> That compares what has been paid against the monthly '
+       + 'figure on each active teacher.</div>';
+
+  const years = []; for (let y = new Date().getFullYear()+1; y >= 2023; y--) years.push(y);
+  h += '<div class="panel"><h2>Payments'
+    + '<span class="actions">'
+    + '<select style="width:140px" onchange="aceState.month=+this.value;render()">'
+      + MONTHS.map((m,i) => '<option value="' + (i+1) + '"' + (aceState.month === i+1 ? ' selected' : '') + '>' + m + '</option>').join('')
+    + '</select>'
+    + '<select style="width:96px" onchange="aceState.year=+this.value;render()">'
+      + years.map(y => '<option' + (aceState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
+    + '</select></span></h2><div class="body flush">'
+    + (inMonth.length ? '<div class="scroll"><table class="ledger"><thead><tr><th>Date</th><th>Kind</th>'
+        + '<th>Teacher / purpose</th><th>Mode</th><th>Reference</th><th class="num">Amount</th><th></th></tr></thead><tbody>'
+      + inMonth.sort((a,b) => (b.paid_on||'').localeCompare(a.paid_on||'')).map(p => {
+          const t = d.teachers.find(x => x.id === p.teacher_id);
+          return '<tr><td>' + fmtDate(p.paid_on) + '</td>'
+            + '<td>' + esc(FUND_CATS[p.category] || p.category) + '</td>'
+            + '<td>' + esc(t ? t.full_name : (p.paid_to || p.student_name || '\u2014')) + '</td>'
+            + '<td>' + esc(p.mode || '\u2014') + '</td><td>' + esc(p.reference_no || '\u2014') + '</td>'
+            + '<td class="num">' + money(p.amount) + '</td>'
+            + '<td style="width:1%"><button class="btn sm danger" onclick="delRow(\'disbursements\',\'' + p.id + '\')">&times;</button></td></tr>';
+        }).join('')
+      + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="num">Rs ' + money(salary + transport) + '</td><td></td></tr></tfoot></table></div>'
+      : '<div class="empty"><p>Nothing paid in ' + MONTHS[aceState.month-1] + ' ' + aceState.year + '.</p>'
+        + '<button class="btn" onclick="payAceSalary()">Record a salary</button></div>')
+    + '</div></div>';
+
+  h += '<div class="panel"><h2>Salary per teacher</h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Teacher</th><th class="num">Monthly</th><th class="num">Paid this month</th><th>Status</th></tr></thead><tbody>'
+    + d.teachers.filter(t => t.status === 'active').map(t => {
+        const paid = inMonth.filter(p => p.teacher_id === t.id).reduce((s,p) => s + num(p.amount), 0);
+        return '<tr><td>' + esc(t.full_name) + '</td>'
+          + '<td class="num">' + (num(t.monthly_salary) ? money(t.monthly_salary) : '\u2014') + '</td>'
+          + '<td class="num">' + (paid ? money(paid) : '\u2014') + '</td>'
+          + '<td>' + (paid >= num(t.monthly_salary) && num(t.monthly_salary) > 0
+              ? '<span class="tag t-green">Paid</span>'
+              : paid ? '<span class="tag t-gold">Part paid</span>' : '<span class="tag t-red">Unpaid</span>') + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+
+  h += '<p class="mini">These entries live in the funds ledger under '
+     + '\u201cACE teacher salary\u201d and \u201cACE transport &amp; misc\u201d, so they are counted '
+     + 'once and appear in the quarterly figures alongside everything else.</p>';
+  return h;
+}
+
+async function payAceSalary(){
+  const d = aceState.data;
+  const active = d.teachers.filter(t => t.status === 'active');
+  if (!active.length){ toast('Add a teacher first'); return; }
+  openModal('Record teacher salary',
+    '<div class="grid g3">'
+    + sel('as-teacher','Teacher', active.map(t => [t.id, t.full_name + (num(t.monthly_salary) ? ' \u00b7 Rs ' + money(t.monthly_salary) : '')]))
+    + fld('as-amount','Amount (Rs)', active[0] ? num(active[0].monthly_salary) || '' : '', 'number')
+    + fld('as-date','Paid on', todayISO(), 'date') + '</div>'
+    + '<div class="grid g3">'
+    + sel('as-month','For month', MONTHS.map((m,i) => [i+1, m]), aceState.month)
+    + fld('as-year','For year', aceState.year, 'number')
+    + sel('as-mode','Mode', PAY_MODES) + '</div>'
+    + fld('as-ref','Reference / voucher no.', '')
+    + fld('as-notes','Notes', '', 'textarea'),
+    async () => {
+      if (!num(mv('as-amount'))){ toast('Enter an amount'); return; }
+      const t = active.find(x => x.id === mv('as-teacher'));
+      await db.insert('disbursements', stampArea({
+        paid_on:mv('as-date') || todayISO(), amount:num(mv('as-amount')),
+        category:'teacher_salary', portfolio_id:'ace', teacher_id:t ? t.id : null,
+        paid_to:t ? t.full_name : '', student_name:t ? t.full_name : '',
+        for_month:+mv('as-month'), for_year:+mv('as-year'),
+        mode:mv('as-mode'), reference_no:mv('as-ref'), notes:mv('as-notes')
+      }));
+      closeModal(); toast('Salary recorded'); render();
+    }, 'Record payment');
+}
+
+async function payAceTransport(){
+  const d = aceState.data;
+  openModal('Record transport or miscellaneous',
+    '<div class="grid g3">'
+    + fld('at-amount','Amount (Rs)', '', 'number')
+    + fld('at-date','Paid on', todayISO(), 'date')
+    + sel('at-mode','Mode', PAY_MODES) + '</div>'
+    + '<div class="grid g2">'
+    + fld('at-purpose','What it was for', '')
+    + sel('at-class','Class (optional)', [['','\u2014 not tied to one class \u2014']]
+        .concat(d.classes.map(c => [c.id, c.name]))) + '</div>'
+    + fld('at-ref','Reference / voucher no.', '')
+    + fld('at-notes','Notes', '', 'textarea'),
+    async () => {
+      if (!num(mv('at-amount'))){ toast('Enter an amount'); return; }
+      await db.insert('disbursements', stampArea({
+        paid_on:mv('at-date') || todayISO(), amount:num(mv('at-amount')),
+        category:'transport_misc', portfolio_id:'ace',
+        ace_class_id:mv('at-class') || null,
+        paid_to:mv('at-purpose'), student_name:mv('at-purpose'),
+        mode:mv('at-mode'), reference_no:mv('at-ref'), notes:mv('at-notes')
+      }));
+      closeModal(); toast('Payment recorded'); render();
+    }, 'Record payment');
+}
+
+
+/* ---------- editors ---------- */
+async function editAceTeacher(id){
+  const t = id ? (await db.list('ace_teachers')).find(x => x.id === id) : { status:'active' };
+  openModal(id ? 'Edit teacher' : 'Add teacher',
+    '<div class="grid g2">' + fld('t-name','Full name', t.full_name) + fld('t-contact','Contact', t.contact) + '</div>'
+    + '<div class="grid g3">' + fld('t-qual','Qualification', t.qualification)
+    + fld('t-salary','Monthly salary (Rs)', t.monthly_salary, 'number')
+    + fld('t-joined','Joined on', t.joined_on, 'date') + '</div>'
+    + sel('t-status','Status', [['active','Active'],['left','Left']], t.status)
+    + fld('t-notes','Notes', t.notes, 'textarea'),
+    async () => {
+      if (!mv('t-name')){ toast('A name is required'); return; }
+      const row = { full_name:mv('t-name'), contact:mv('t-contact'), qualification:mv('t-qual'),
+        monthly_salary:num(mv('t-salary')), joined_on:mv('t-joined') || null,
+        status:mv('t-status'), notes:mv('t-notes') };
+      id ? await db.update('ace_teachers', id, row) : await db.insert('ace_teachers', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function editAceClass(id){
+  const c = id ? (await db.list('ace_classes')).find(x => x.id === id) : { status:'running' };
+  const teachers = await sList('ace_teachers');
+  openModal(id ? 'Edit class' : 'Add class',
+    '<div class="grid g2">' + fld('k-name','Class name', c.name)
+    + sel('k-teacher','Teacher', [['','\u2014 not set \u2014']].concat(teachers.map(t => [t.id, t.full_name])), c.teacher_id) + '</div>'
+    + '<div class="grid g3">' + fld('k-venue','Venue', c.venue) + fld('k-level','Level / grade', c.level)
+    + fld('k-started','Started on', c.started_on, 'date') + '</div>'
+    + '<div class="grid g3">' + fld('k-days','Days', c.days) + fld('k-timing','Timing', c.timing)
+    + sel('k-status','Status', [['running','Running'],['paused','Paused'],['closed','Closed']], c.status) + '</div>'
+    + fld('k-drive','Pictures folder (Drive link)', c.drive_url)
+    + fld('k-notes','Notes', c.notes, 'textarea'),
+    async () => {
+      if (!mv('k-name')){ toast('A class name is required'); return; }
+      const row = { name:mv('k-name'), teacher_id:mv('k-teacher') || null, venue:mv('k-venue'),
+        level:mv('k-level'), started_on:mv('k-started') || null, days:mv('k-days'),
+        timing:mv('k-timing'), status:mv('k-status'), drive_url:mv('k-drive'), notes:mv('k-notes') };
+      id ? await db.update('ace_classes', id, row) : await db.insert('ace_classes', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function editAceStudent(id, classId){
+  const r = id ? (await db.list('ace_students')).find(x => x.id === id)
+               : { class_id:classId, status:'active', enrolled_on:todayISO() };
+  const classes = await sList('ace_classes');
+  openModal(id ? 'Edit student' : 'Add student to the roll',
+    '<div class="grid g2">' + fld('e-name','Full name', r.full_name)
+    + sel('e-class','Class', classes.map(c => [c.id, c.name]), r.class_id) + '</div>'
+    + '<div class="grid g3">' + fld('e-guard','Guardian', r.guardian_name)
+    + fld('e-contact','Contact', r.contact) + fld('e-grade','Grade', r.grade) + '</div>'
+    + '<div class="grid g3">' + fld('e-school','School', r.school)
+    + fld('e-enrolled','Enrolled on', r.enrolled_on, 'date')
+    + sel('e-status','Status', [['active','Active'],['left','Left']], r.status) + '</div>'
+    + fld('e-notes','Notes', r.notes, 'textarea'),
+    async () => {
+      if (!mv('e-name')){ toast('A name is required'); return; }
+      const row = { full_name:mv('e-name'), class_id:mv('e-class') || null, guardian_name:mv('e-guard'),
+        contact:mv('e-contact'), grade:mv('e-grade'), school:mv('e-school'),
+        enrolled_on:mv('e-enrolled') || null, status:mv('e-status'), notes:mv('e-notes') };
+      id ? await db.update('ace_students', id, row) : await db.insert('ace_students', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+/* Taking the register: the class roll with a tick against each name. */
+async function editAceSession(id){
+  const d = aceState.data;
+  if (!d.classes.length){ toast('Add a class first'); return; }
+  const x = id ? d.sessions.find(y => y.id === id)
+               : { class_id:d.classes[0].id, held_on:todayISO(), teacher_present:true };
+  const marks = id ? d.attendance.filter(a => a.session_id === id) : [];
+
+  const rollFor = cid => d.students.filter(st => st.class_id === cid && st.status !== 'left');
+  const roll = rollFor(x.class_id);
+  const cls = d.classes.find(c => c.id === x.class_id);
+  const teacher = d.teachers.find(t => t.id === (x.teacher_id || (cls && cls.teacher_id)));
+
+  openModal(id ? 'Register \u2014 ' + fmtDate(x.held_on) : 'Take a register',
+    '<div class="grid g3">'
+    + sel('g-class','Class', d.classes.map(c => [c.id, c.name]), x.class_id)
+    + fld('g-date','Date', x.held_on, 'date')
+    + fld('g-topic','Topic covered', x.topic) + '</div>'
+    + (id ? '' : '<p class="mini" style="margin-top:-6px">Changing the class here will reload the roll after you save.</p>')
+    + '<div class="grid g2">'
+    + '<label style="display:flex;gap:9px;align-items:center;color:var(--text);margin-bottom:16px">'
+      + '<input type="checkbox" id="g-teacher" style="width:auto"' + (x.teacher_present === false ? '' : ' checked') + '> '
+      + 'Teacher present' + (teacher ? ' (' + esc(teacher.full_name) + ')' : '') + '</label>'
+    + fld('g-drive','Pictures of this sitting (Drive link)', x.drive_url) + '</div>'
+    + '<h4 class="serif" style="margin:6px 0 10px">Students'
+      + '<span class="mini" style="font-weight:400"> \u00b7 ' + roll.length + ' on the roll</span></h4>'
+    + (roll.length
+        ? '<div style="display:flex;gap:8px;margin-bottom:10px">'
+          + '<button class="btn sm ghost" onclick="markAll(true)">Mark all present</button>'
+          + '<button class="btn sm ghost" onclick="markAll(false)">Mark all absent</button></div>'
+          + '<div class="scroll" style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r)">'
+          + '<table class="ledger"><tbody>'
+          + roll.map(st => {
+              const m = marks.find(a => a.ace_student_id === st.id);
+              const on = m ? m.present : true;
+              return '<tr><td>' + esc(st.full_name)
+                + (st.grade ? '<div class="mini">' + esc(st.grade) + '</div>' : '') + '</td>'
+                + '<td style="width:1%"><label style="display:flex;gap:8px;align-items:center;margin:0;color:var(--text)">'
+                + '<input type="checkbox" class="att" data-student="' + st.id + '" style="width:auto"'
+                + (on ? ' checked' : '') + '> present</label></td></tr>';
+            }).join('')
+          + '</tbody></table></div>'
+        : '<div class="note">Nobody is on this class roll yet.</div>')
+    + fld('g-notes','Notes', x.notes, 'textarea'),
+    async () => {
+      const row = { class_id:mv('g-class'), held_on:mv('g-date') || todayISO(), topic:mv('g-topic'),
+        teacher_present:$('g-teacher').checked, drive_url:mv('g-drive'), notes:mv('g-notes'),
+        teacher_id:(d.classes.find(c => c.id === mv('g-class')) || {}).teacher_id || null };
+      let sessionId = id;
+      try{
+        if (id) await db.update('ace_sessions', id, row);
+        else sessionId = (await db.insert('ace_sessions', stampArea(row))).id;
+      }catch(err){
+        toast(/duplicate|unique/i.test(err.message || '')
+          ? 'A register already exists for that class on that date'
+          : 'Could not save: ' + (err.message || err));
+        return;
+      }
+      const ticks = [...document.querySelectorAll('.att')];
+      const fresh = [], updates = [];
+      ticks.forEach(t => {
+        const sid = t.getAttribute('data-student');
+        const was = marks.find(a => a.ace_student_id === sid);
+        if (was){ if (was.present !== t.checked) updates.push([was.id, t.checked]); }
+        else fresh.push({ session_id:sessionId, ace_student_id:sid, present:t.checked });
+      });
+      if (fresh.length) await db.insertMany('ace_attendance', fresh);
+      for (const u of updates) await db.update('ace_attendance', u[0], { present:u[1] });
+      closeModal();
+      toast('Register saved \u2014 ' + ticks.filter(t => t.checked).length + ' of ' + ticks.length + ' present');
+      render();
+    }, 'Save register');
+}
+function markAll(on){ document.querySelectorAll('.att').forEach(t => t.checked = on); }
+
+async function editAceTraining(id){
+  const t = id ? (await db.list('ace_trainings')).find(x => x.id === id)
+               : { mode:'online', held_on:todayISO() };
+  openModal(id ? 'Edit training' : 'Add a training',
+    fld('n-title','Title', t.title)
+    + '<div class="grid g3">'
+    + sel('n-mode','Mode', [['online','Online'],['in person','In person']], t.mode)
+    + fld('n-date','Held on', t.held_on, 'date')
+    + fld('n-duration','Duration', t.duration) + '</div>'
+    + '<div class="grid g2">' + fld('n-trainer','Trainer', t.trainer)
+    + fld('n-link','Session link', t.link) + '</div>'
+    + fld('n-drive','Pictures / recording folder', t.drive_url)
+    + fld('n-notes','Notes', t.notes, 'textarea'),
+    async () => {
+      if (!mv('n-title')){ toast('A title is required'); return; }
+      const row = { title:mv('n-title'), mode:mv('n-mode'), held_on:mv('n-date') || null,
+        duration:mv('n-duration'), trainer:mv('n-trainer'), link:mv('n-link'),
+        drive_url:mv('n-drive'), notes:mv('n-notes') };
+      id ? await db.update('ace_trainings', id, row) : await db.insert('ace_trainings', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+/* Which teachers attended a training. */
+async function markTraining(id){
+  const d = aceState.data;
+  const t = d.trainings.find(x => x.id === id);
+  const marks = d.tAtt.filter(a => a.training_id === id);
+  const teachers = d.teachers.filter(x => x.status === 'active');
+  if (!teachers.length){ toast('Add a teacher first'); return; }
+  openModal('Attendance \u2014 ' + t.title,
+    '<p class="mini" style="margin-top:0">' + esc(fmtDate(t.held_on)) + ' \u00b7 '
+      + esc(t.mode === 'online' ? 'Online' : 'In person') + '</p>'
+    + '<div style="display:flex;gap:8px;margin-bottom:10px">'
+    + '<button class="btn sm ghost" onclick="markAllT(true)">All attended</button>'
+    + '<button class="btn sm ghost" onclick="markAllT(false)">None</button></div>'
+    + '<div class="scroll" style="max-height:48vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r)">'
+    + '<table class="ledger"><tbody>'
+    + teachers.map(x => {
+        const m = marks.find(a => a.teacher_id === x.id);
+        return '<tr><td>' + esc(x.full_name) + '</td>'
+          + '<td style="width:1%"><label style="display:flex;gap:8px;align-items:center;margin:0;color:var(--text)">'
+          + '<input type="checkbox" class="tatt" data-teacher="' + x.id + '" style="width:auto"'
+          + (m ? (m.attended ? ' checked' : '') : '') + '> attended</label></td></tr>';
+      }).join('')
+    + '</tbody></table></div>',
+    async () => {
+      const ticks = [...document.querySelectorAll('.tatt')];
+      const fresh = [], updates = [];
+      ticks.forEach(el => {
+        const tid = el.getAttribute('data-teacher');
+        const was = marks.find(a => a.teacher_id === tid);
+        if (was){ if (was.attended !== el.checked) updates.push([was.id, el.checked]); }
+        else if (el.checked) fresh.push({ training_id:id, teacher_id:tid, attended:true });
+      });
+      if (fresh.length) await db.insertMany('ace_training_attendance', fresh);
+      for (const u of updates) await db.update('ace_training_attendance', u[0], { attended:u[1] });
+      closeModal();
+      toast(ticks.filter(x => x.checked).length + ' teachers marked');
+      render();
+    }, 'Save attendance');
+}
+function markAllT(on){ document.querySelectorAll('.tatt').forEach(t => t.checked = on); }
+
 /* =====================================================================
    Interface: theme, mobile drawer, command palette, table tools,
    keyboard entry, undo, and a saving indicator.
@@ -1144,6 +1795,10 @@ function paletteItems(){
     issues && { label:'Issue a directive',           group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
     { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
     juris && { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
+    { label:'Take an ACE register',          group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='register'; render(); }, 60); } },
+    { label:'ACE baseline scores',           group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='assess'; render(); }, 60); } },
+    { label:'Add an ACE teacher',            group:'ACE Classes', run:() => { go('ace'); setTimeout(editAceTeacher, 60); } },
+    money && { label:'Record ACE teacher salary', group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='money'; render(); }, 60); } },
     { label:'Add a programme',               group:'Programmes', run:() => { go('programs'); setTimeout(editProgram, 60); } },
     { label:'New permission form',           group:'PRF', run:() => { go('prf'); setTimeout(editPRF, 60); } },
     { label:'Send the quarterly report',     group:'Report', run:() => { go('report'); setTimeout(() => openShare('report'), 500); } },
@@ -1299,6 +1954,7 @@ const PAGES = [
   { id:'funds',    label:'Funds & donors', financeOnly:true },
   { id:'students', label:'Student register'  },
   { id:'cases',    label:'Tuesday cases'     },
+  { id:'ace',      label:'ACE Classes'       },
   { id:'programs', label:'Programmes'        },
   { id:'prf',      label:'Permission forms'  },
   { id:'report',   label:'Quarterly report'  },
@@ -1412,6 +2068,7 @@ async function render(){
     }
     if (page === 'students')  await pageStudents(v);
     if (page === 'cases')     await pageCases(v);
+    if (page === 'ace')       await pageAce(v);
     if (page === 'programs')  await pagePrograms(v);
     if (page === 'prf')       await pagePRF(v);
     if (page === 'report')    await pageReport(v);
@@ -1863,6 +2520,8 @@ const FUND_CATS = {
   tuition:'Tuition support',
   university:'University & college fees',
   transport:'Transport',
+  teacher_salary:'ACE teacher salary',
+  transport_misc:'ACE transport & misc',
   other:'Other support'
 };
 const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university' };
