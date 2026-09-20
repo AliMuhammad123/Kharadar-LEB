@@ -526,7 +526,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v4.1';
+const APP_VERSION = 'v4.3';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -674,6 +674,11 @@ function atJurisdiction(){
     || (['portfolio_head','portfolio_member'].indexOf(ME.role) >= 0 && !ME.area_id);
 }
 function canFinance(){ return FINANCE_ROLES.indexOf(ME.role) >= 0 || !!ME.finance_access; }
+/* A portfolio head handles their own portfolio's spending, without being
+   given the board's wider finances or the donor list. */
+function canPortfolioMoney(pid){
+  return LOCAL || canFinance() || (ME.role === 'portfolio_head' && ME.portfolio_id === pid);
+}
 /* The parent body proper: chairperson, secretary, admin. Portfolio people work
    at jurisdiction level too, but they are not the parent body. */
 function isParentBody(){ return JURIS_ROLES.indexOf(ME.role) >= 0; }
@@ -1089,7 +1094,21 @@ async function aceLoad(){
 }
 
 async function pageAce(v){
-  const d = await aceLoad();
+  let d;
+  try{
+    d = await aceLoad();
+  }catch(err){
+    const msg = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(msg)){
+      v.innerHTML = head('ACE Classes', '')
+        + '<div class="note warn"><b>The ACE tables are not in your database yet.</b><br>'
+        + 'Open the Supabase SQL editor and run <code>migrate-v40.sql</code>, then '
+        + '<code>migrate-v41.sql</code> and <code>migrate-v42.sql</code>. Nothing on this '
+        + 'screen will work until then.<br><span class="mini">' + esc(msg) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
   aceState.data = d;
 
   let h = head('ACE Classes',
@@ -1111,6 +1130,8 @@ async function pageAce(v){
 
 function aceTabActions(){
   const t = aceState.tab;
+  const reg = '<button class="btn ghost" onclick="editAceSession()">Take a register</button>';
+  if (t === 'overview') return reg;
   if (t === 'classes')  return '<button class="btn ghost" onclick="editAceTeacher()">Add teacher</button>'
                              + '<button class="btn" onclick="editAceClass()">Add class</button>';
   if (t === 'register') return '<button class="btn" onclick="editAceSession()">Take a register</button>';
@@ -1145,8 +1166,13 @@ function aceOverview(d){
     + '</div>';
 
   if (!d.classes.length)
-    return h + '<div class="panel"><div class="empty"><p>No ACE classes recorded yet.</p>'
-      + '<button class="btn" onclick="aceState.tab=\'classes\';render()">Set up the first class</button></div></div>';
+    return h + '<div class="panel"><div class="empty"><p>No ACE classes recorded yet. '
+      + 'Start by adding a teacher, then a class, then the students on its roll.</p>'
+      + '<button class="btn" onclick="editAceTeacher()">Add a teacher</button> '
+      + '<button class="btn ghost" onclick="aceState.tab=\'classes\';render()">Go to classes</button></div></div>';
+  if (d.students.length && !d.sessions.length)
+    h += '<div class="note"><b>No register has been taken yet.</b> '
+       + '<button class="btn sm" onclick="editAceSession()">Take one now</button></div>';
 
   h += '<div class="panel"><h2>Class by class</h2><div class="body flush"><div class="scroll"><table class="ledger">'
     + '<thead><tr><th>Class</th><th>Teacher</th><th class="num">Students</th><th class="num">Sittings</th>'
@@ -1229,7 +1255,13 @@ function aceClasses(d){
 function aceRegister(d){
   const sessions = d.sessions.slice().sort((a,b) => (b.held_on||'').localeCompare(a.held_on||''));
   if (!d.classes.length)
-    return '<div class="panel"><div class="empty"><p>Add a class before taking a register.</p></div></div>';
+    return '<div class="panel"><div class="empty"><p>A register belongs to a class, and there are '
+      + 'no classes yet.</p><button class="btn" onclick="editAceClass()">Add a class</button> '
+      + '<button class="btn ghost" onclick="aceState.tab=\'classes\';render()">Go to classes</button></div></div>';
+  if (!d.students.length)
+    return '<div class="panel"><div class="empty"><p>Nobody is on a class roll yet, so there is '
+      + 'nobody to mark.</p><button class="btn" onclick="editAceStudent(null,\'' + d.classes[0].id + '\')">Add a student</button> '
+      + '<button class="btn ghost" onclick="aceState.tab=\'classes\';render()">Go to classes</button></div></div>';
   if (!sessions.length)
     return '<div class="panel"><div class="empty"><p>No registers taken yet.</p>'
       + '<button class="btn" onclick="editAceSession()">Take the first register</button></div></div>';
@@ -1379,7 +1411,7 @@ async function saveBaseline(studentId, field, value){
 
 /* ---------- salary, transport and miscellaneous ---------- */
 async function aceMoney(d){
-  if (!canFinance())
+  if (!canPortfolioMoney('ace'))
     return '<div class="panel"><div class="empty"><p>Salary and transport figures are part of the '
       + 'board\u2019s finances, which your posting does not cover.</p></div></div>';
 
@@ -1800,7 +1832,7 @@ function paletteItems(){
     { label:'Take an ACE register',          group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='register'; render(); }, 60); } },
     { label:'ACE baseline scores',           group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='assess'; render(); }, 60); } },
     { label:'Add an ACE teacher',            group:'ACE Classes', run:() => { go('ace'); setTimeout(editAceTeacher, 60); } },
-    money && { label:'Record ACE teacher salary', group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='money'; render(); }, 60); } },
+    canPortfolioMoney('ace') && { label:'Record ACE teacher salary', group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='money'; render(); }, 60); } },
     { label:'Add a programme',               group:'Programmes', run:() => { go('programs'); setTimeout(editProgram, 60); } },
     { label:'New permission form',           group:'PRF', run:() => { go('prf'); setTimeout(editPRF, 60); } },
     { label:'Send the quarterly report',     group:'Report', run:() => { go('report'); setTimeout(() => openShare('report'), 500); } },
