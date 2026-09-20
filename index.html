@@ -266,6 +266,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 .tick:hover{border-color:var(--accent-2)}
 .tick.on{background:var(--green-bg);border-color:var(--green);color:var(--green);font-weight:700}
 
+.home-head{margin:10px 0 28px}
+.home-head h1{margin:0;font-size:30px}
+.home-head p{margin:8px 0 0;color:var(--text-2);font-size:15px}
+.home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.wcard{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:22px;cursor:pointer;box-shadow:var(--sh);
+  transition:border-color var(--t) var(--ease),box-shadow var(--t) var(--ease),transform var(--t) var(--ease)}
+.wcard:hover{border-color:var(--accent-2);box-shadow:var(--sh-md);transform:translateY(-2px)}
+.wcard.board{background:var(--subtle)}
+.wc-title{font-size:18px;font-weight:600;letter-spacing:-.02em}
+.wc-blurb{font-size:13.5px;color:var(--text-2);line-height:1.5}
+.wc-tag{font-size:12px;color:var(--muted);background:var(--hover);border-radius:20px;padding:2px 10px}
+.wc-go{margin-top:6px;font-size:13.5px;font-weight:500;color:var(--accent-2)}
+.wcard:hover .wc-go{text-decoration:underline}
+.home-sub{margin-top:34px;padding-top:22px;border-top:1px solid var(--line)}
+.home-sub h3{margin:0 0 4px;font-size:15px}
+.pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
 .acegrid td{vertical-align:top}
 .acegrid td b{font-size:15px}
 .acegrid tbody tr:hover{background:var(--subtle)}
@@ -557,7 +576,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v5.0';
+const APP_VERSION = 'v6.3';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -641,7 +660,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -2263,6 +2282,1128 @@ async function markTraining(id){
 }
 function markAllT(on){ document.querySelectorAll('.tatt').forEach(t => t.checked = on); }
 
+
+/* =====================================================================
+   Afghan Classes Schools — Oklife School, Clifton area
+   Books and copies, new admissions, transport, monthly fees, results.
+   ===================================================================== */
+const AFG_SUPPORT = { books_copies:'Books & copies', uniform:'Uniform',
+                      stationery:'Stationery', transport:'Transport', other:'Other' };
+
+async function afghanLoad(){
+  const [students, fees, support, results] = await Promise.all([
+    sList('afghan_students'), sList('afghan_fees'), sList('afghan_support'), sList('afghan_results')
+  ]);
+  return { students, fees, support, results };
+}
+
+async function afghanAllLoad(){
+  const [a, e, claims] = await Promise.all([
+    afghanLoad(), englishLoad(),
+    sList('national_claims').catch(() => [])
+  ]);
+  natState.data = claims;
+  return Object.assign({}, a, { eng:e, claims:claims });
+}
+
+async function pageAfghan(v){
+  let d;
+  try{ d = await afghanAllLoad(); }
+  catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('Afghan Classes Schools','')
+        + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
+        + 'Run <code>migrate-v50.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  afgState.data = d;
+  engState.data = d.eng;
+  const tab = afgState.tab;
+  const names = { overview:'Dashboard', register:'Student register', english:'English classes',
+                  school:'School data', claims:'Reimbursement' };
+  let h = head('Afghan Matters \u00b7 ' + (names[tab] || ''),
+    'Kharadar and Clifton. Student register, English classes, school data, '
+    + 'and what is claimed back from national.', afgActions());
+  h += scopeBanner;
+  h += '<div id="afg-body">';
+  if (tab === 'overview') h += afgOverview(d);
+  if (tab === 'register') h += afgRoll(d);
+  if (tab === 'english')  h += afgEnglish(d);
+  if (tab === 'school')   h += afgSchool(d);
+  if (tab === 'claims')   h += afgClaims(d);
+  h += '</div>';
+  v.innerHTML = h;
+}
+
+function afgActions(){
+  const t = afgState.tab;
+  if (t === 'english') return engActions();
+  if (t === 'school')  return '<button class="btn ghost" onclick="exportAfgFees()">Export</button>'
+                            + '<button class="btn send" onclick="openShare(\'afg_fees\')">Send</button>'
+                            + '<button class="btn ghost" onclick="editAfgSupport()">Record support</button>';
+  if (t === 'claims')  return '<button class="btn ghost" onclick="exportClaims()">Export</button>'
+                            + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
+                            + '<button class="btn" onclick="editClaim()">Add a claim</button>';
+  if (t === 'register') return '<button class="btn ghost" onclick="openImport(\'afghan_students\')">Import</button>'
+                            + '<button class="btn ghost" onclick="exportAfgRoll()">Export</button>'
+                            + '<button class="btn send" onclick="openShare(\'afg_roll\')">Send</button>'
+                            + '<button class="btn" onclick="editAfgStudent()">Add student</button>';
+  return '';
+}
+
+const afgRollOrder = list => list.slice().sort((a,b) =>
+  (a.serial_no || 9999) - (b.serial_no || 9999)
+  || (a.created_at || '').localeCompare(b.created_at || '')
+  || a.full_name.localeCompare(b.full_name));
+
+function afgOverview(d){
+  const active = d.students.filter(s => s.status !== 'left');
+  const engCls = (d.eng && d.eng.classes) || [];
+  const engRoll = ((d.eng && d.eng.students) || []).filter(s => s.status !== 'left');
+  const claims = d.claims || [];
+  const key = { m:afgState.month, y:afgState.year };
+  const monthFees = d.fees.filter(f => f.month === key.m && f.year === key.y);
+  const collected = monthFees.filter(f => f.status === 'Paid')
+    .reduce((s,f) => s + num(f.amount) + num(f.transport_amount), 0);
+  const due = active.reduce((s,x) => s + num(x.monthly_fee) + num(x.transport_fee), 0);
+  const newAdm = active.filter(x => x.is_new_admission
+    || (x.admission_on || '').slice(0,7) === key.y + '-' + String(key.m).padStart(2,'0')).length;
+  const onTransport = active.filter(x => x.transport_needed).length;
+  const books = d.support.filter(x => x.kind === 'books_copies');
+  const booksAmt = books.reduce((s,x) => s + num(x.amount), 0);
+  const scored = d.results.filter(r => r.marks_obtained !== null && r.marks_obtained !== undefined);
+  const avgPct = scored.length
+    ? scored.reduce((s,r) => s + (num(r.total_marks) ? num(r.marks_obtained)/num(r.total_marks)*100 : 0), 0) / scored.length
+    : null;
+
+  const claimed = claims.reduce((t,c) => t + (num(c.amount_claimed) || num(c.amount)), 0);
+  const received = claims.reduce((t,c) => t + num(c.amount_received), 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">On the school roll</div><div class="v">' + active.length + '</div></div>'
+    + '<div><div class="k">In English classes</div><div class="v">' + engRoll.length + '</div></div>'
+    + '<div><div class="k">New admissions</div><div class="v">' + newAdm + '</div></div>'
+    + '<div><div class="k">Using transport</div><div class="v">' + onTransport + '</div></div>'
+    + '</div>'
+    + '<div class="stats">'
+    + '<div><div class="k">English classes running</div><div class="v">'
+      + engCls.filter(c => c.status === 'running').length + '</div></div>'
+    + '<div><div class="k">Average result</div><div class="v">'
+      + (avgPct === null ? '\u2014' : Math.round(avgPct) + '%') + '</div></div>'
+    + '<div><div class="k">Claimed from national</div><div class="v">Rs ' + money(claimed) + '</div></div>'
+    + '<div><div class="k">Still outstanding</div><div class="v">Rs '
+      + money(Math.max(0, claimed - received)) + '</div></div>'
+    + '</div>'
+    + '<div class="stats">'
+    + '<div><div class="k">' + MONTHS[afgState.month-1] + ' collected</div><div class="v">Rs ' + money(collected) + '</div></div>'
+    + '<div><div class="k">Monthly fees due</div><div class="v">Rs ' + money(due) + '</div></div>'
+    + '<div><div class="k">Books &amp; copies given</div><div class="v">' + books.length + '</div></div>'
+    + '<div><div class="k">Spent on books</div><div class="v">Rs ' + money(booksAmt) + '</div></div>'
+    + '</div>';
+
+  if (!active.length)
+    return h + '<div class="panel"><div class="empty"><p>No students on the Oklife roll yet.</p>'
+      + '<button class="btn" onclick="editAfgStudent()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'afghan_students\')">Import from Excel</button></div></div>';
+
+  h += '<div class="panel"><h2>By area</h2><div class="body flush"><div class="scroll">'
+    + '<table class="ledger"><thead><tr><th>Area</th><th class="num">School roll</th>'
+    + '<th class="num">English students</th><th class="num">On transport</th>'
+    + '<th class="num">Claims</th></tr></thead><tbody>'
+    + ORG.areas.filter(a => ['kharadar','clifton'].indexOf(a.id) >= 0).map(a =>
+        '<tr><td><b>' + esc(a.name) + '</b></td>'
+        + '<td class="num">' + (active.filter(x => x.area_id === a.id).length || '\u2014') + '</td>'
+        + '<td class="num">' + (engRoll.filter(x => x.area_id === a.id).length || '\u2014') + '</td>'
+        + '<td class="num">' + (active.filter(x => x.area_id === a.id && x.transport_needed).length || '\u2014') + '</td>'
+        + '<td class="num">' + (claims.filter(c => c.area_id === a.id).length || '\u2014') + '</td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+
+  const byClass = {};
+  active.forEach(x => { const k = x.class_grade || 'Not set'; byClass[k] = (byClass[k] || 0) + 1; });
+  h += '<div class="grid g2"><div class="panel" style="margin:0"><h2>By class</h2><div class="body flush">'
+    + '<table class="ledger"><tbody>'
+    + Object.keys(byClass).sort().map(k => '<tr><td>Class ' + esc(k) + '</td>'
+        + '<td class="num">' + byClass[k] + '</td></tr>').join('')
+    + '</tbody></table></div></div>'
+    + '<div class="panel" style="margin:0"><h2>Support given</h2><div class="body flush">'
+    + '<table class="ledger"><tbody>'
+    + Object.keys(AFG_SUPPORT).map(k => {
+        const rows = d.support.filter(x => x.kind === k);
+        if (!rows.length) return '';
+        return '<tr><td>' + esc(AFG_SUPPORT[k]) + '<div class="mini">' + rows.length + ' record(s)</div></td>'
+          + '<td class="num">Rs ' + money(rows.reduce((s,x) => s + num(x.amount), 0)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2"><div class="empty"><p>Nothing recorded yet.</p></div></td></tr>'
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+function afgRoll(d){
+  const rows = afgRollOrder(d.students);
+  if (!rows.length)
+    return '<div class="panel"><div class="empty"><p>Nobody on the roll yet.</p>'
+      + '<button class="btn" onclick="editAfgStudent()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'afghan_students\')">Import from Excel</button></div></div>';
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-afg', 'Search the roll\u2026', rows.length + ' students')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-afg">'
+    + '<thead><tr><th class="sn">S.No</th><th>Student name</th><th>Father / guardian</th>'
+    + '<th>Class</th><th>Admitted</th><th class="num">Monthly fee</th><th>Transport</th>'
+    + '<th>Contact</th><th>Status</th><th></th></tr></thead><tbody>'
+    + rows.map((x,i) => '<tr><td class="sn">' + (x.serial_no || i+1) + '</td>'
+      + '<td>' + esc(x.full_name)
+        + (x.is_new_admission ? ' <span class="tag t-green">new</span>' : '') + '</td>'
+      + '<td>' + esc(x.father_name || x.guardian_name || '\u2014') + '</td>'
+      + '<td>' + esc(x.class_grade || '\u2014') + (x.section ? ' ' + esc(x.section) : '') + '</td>'
+      + '<td>' + fmtDate(x.admission_on) + '</td>'
+      + '<td class="num">' + (num(x.monthly_fee) ? money(x.monthly_fee) : '\u2014') + '</td>'
+      + '<td>' + (x.transport_needed
+          ? '<span class="tag t-blue">Yes</span>' + (num(x.transport_fee) ? '<div class="mini">Rs ' + money(x.transport_fee) + '</div>' : '')
+          : '<span class="mini">no</span>') + '</td>'
+      + '<td>' + esc(x.contact || '\u2014') + '</td>'
+      + '<td>' + (x.status === 'active' ? '<span class="tag t-green">Active</span>' : '<span class="tag t-grey">Left</span>') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editAfgStudent(\'' + x.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'afghan_students\',\'' + x.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+}
+
+
+
+/* Afghan Matters keeps three sub-views under English classes and school data. */
+function afgSubTabs(list, current, fn){
+  return '<div class="panel"><div class="body flush"><div class="tabs">'
+    + list.map(t => '<button class="' + (current === t[0] ? 'on' : '') + '" '
+        + 'onclick="' + fn + '(\'' + t[0] + '\')">' + t[1] + '</button>').join('')
+    + '</div></div></div>';
+}
+function afgSub(v){ afgState.sub = v; render(); }
+
+function afgEnglish(d){
+  const e = d.eng;
+  let h = afgSubTabs([['overview','Overview'],['classes','Classes, teachers & timing'],['roll','Students']],
+    engState.tab, 'engSub');
+  if (engState.tab === 'overview') h += engOverview(e);
+  if (engState.tab === 'classes')  h += engClasses(e);
+  if (engState.tab === 'roll')     h += engRoll(e);
+  return h;
+}
+function engSub(v){ engState.tab = v; render(); }
+
+/* School data: transportation, monthly fees, and who paid which share. */
+function afgSchool(d){
+  let h = afgSubTabs([['fees','Monthly fees & contributions'],['transport','Transportation'],
+                      ['support','Books & other support'],['results','Results']],
+    afgState.sub, 'afgSub');
+  if (afgState.sub === 'fees')      h += afgFees(d);
+  if (afgState.sub === 'transport') h += afgTransport(d);
+  if (afgState.sub === 'support')   h += afgSupport(d);
+  if (afgState.sub === 'results')   h += afgResults(d);
+  return h;
+}
+
+function afgTransport(d){
+  const roll = afgRollOrder(d.students.filter(s => s.status !== 'left' && s.transport_needed));
+  const m = afgState.month, y = afgState.year;
+  const total = roll.reduce((s,st) => {
+    const f = d.fees.find(x => x.student_id === st.id && x.month === m && x.year === y);
+    return s + (f && f.transport_amount !== undefined ? num(f.transport_amount) : num(st.transport_fee));
+  }, 0);
+  if (!roll.length)
+    return '<div class="panel"><div class="empty"><p>Nobody is marked as using transport.</p>'
+      + '<p class="mini">Open a student in the register and tick \u201cUses transport\u201d.</p></div></div>';
+  return '<div class="stats">'
+    + '<div><div class="k">On transport</div><div class="v">' + roll.length + '</div></div>'
+    + '<div><div class="k">' + MONTHS[m-1] + ' transport cost</div><div class="v">Rs ' + money(total) + '</div></div>'
+    + '<div><div class="k">Of the roll</div><div class="v">'
+      + pct(roll.length, d.students.filter(s => s.status !== 'left').length) + '%</div></div>'
+    + '<div><div class="k">Claimable from national</div><div class="v">Rs ' + money(total) + '</div></div>'
+    + '</div>'
+    + '<div class="panel"><h2>Students using transport</h2><div class="body flush"><div class="scroll">'
+    + '<table class="ledger"><thead><tr><th class="sn">#</th><th>Student</th><th>Class</th>'
+    + '<th>Area</th><th class="num">Monthly transport</th></tr></thead><tbody>'
+    + roll.map((st,i) => '<tr><td class="sn">' + (i+1) + '</td><td>' + esc(st.full_name) + '</td>'
+      + '<td>' + esc(st.class_grade || '\u2014') + '</td>'
+      + '<td>' + esc(areaName(st.area_id)) + '</td>'
+      + '<td class="num">' + money(st.transport_fee) + '</td></tr>').join('')
+    + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">Rs ' + money(total) + '</td></tr></tfoot>'
+    + '</table></div></div></div>';
+}
+
+/* ---------- monthly fees, laid out like the Pak Progressive sheet ---------- */
+function afgFees(d){
+  const roll = afgRollOrder(d.students.filter(s => s.status !== 'left'));
+  const m = afgState.month, y = afgState.year;
+  const feeFor = sid => d.fees.find(f => f.student_id === sid && f.month === m && f.year === y);
+  const years = []; for (let yy = new Date().getFullYear()+1; yy >= 2023; yy--) years.push(yy);
+
+  let h = '<div class="panel"><h2>' + MONTHS[m-1] + ' ' + y
+    + '<span class="actions">'
+    + '<select style="width:130px" onchange="afgState.month=+this.value;render()">'
+      + MONTHS.map((x,i) => '<option value="' + (i+1) + '"' + (m === i+1 ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select>'
+    + '<select style="width:92px" onchange="afgState.year=+this.value;render()">'
+      + years.map(x => '<option' + (y === x ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select>'
+    + '<button class="btn sm ghost" onclick="fillAfgFees()">Fill from the roll</button>'
+    + '</span></h2><div class="body flush">';
+
+  if (!roll.length) return h + '<div class="empty"><p>Nobody on the roll.</p></div></div></div>';
+
+  let totFee = 0, totTrans = 0, paid = 0, totPar = 0, totLeb = 0;
+  const body = roll.map((st,i) => {
+    const f = feeFor(st.id) || {};
+    const amt = f.amount === undefined ? num(st.monthly_fee) : num(f.amount);
+    const tr  = f.transport_amount === undefined ? num(st.transport_fee) : num(f.transport_amount);
+    totFee += amt; totTrans += tr;
+    if (f.status === 'Paid') paid += amt + tr;
+    const par = f.parent_contribution === undefined ? num(st.parent_share) : num(f.parent_contribution);
+    const leb = f.leb_contribution === undefined ? num(st.leb_share) : num(f.leb_contribution);
+    totPar += par; totLeb += leb;
+    return '<tr><td class="sn">' + (i+1) + '</td><td>' + esc(st.full_name) + '</td>'
+      + '<td>' + esc(st.class_grade || '\u2014') + '</td>'
+      + '<td class="num"><input type="number" min="0" style="text-align:right" value="' + esc(amt || '') + '" '
+        + 'onchange="saveAfgFee(\'' + st.id + '\',\'amount\',this.value)"></td>'
+      + '<td class="num"><input type="number" min="0" style="text-align:right" value="' + esc(par || '') + '" '
+        + 'onchange="saveAfgFee(\'' + st.id + '\',\'parent_contribution\',this.value)"></td>'
+      + '<td class="num"><input type="number" min="0" style="text-align:right" value="' + esc(leb || '') + '" '
+        + 'onchange="saveAfgFee(\'' + st.id + '\',\'leb_contribution\',this.value)"></td>'
+      + '<td class="num"><input type="number" min="0" style="text-align:right" value="' + esc(tr || '') + '" '
+        + 'onchange="saveAfgFee(\'' + st.id + '\',\'transport_amount\',this.value)"></td>'
+      + '<td class="num">' + money(amt + tr) + '</td>'
+      + '<td><select onchange="saveAfgFee(\'' + st.id + '\',\'status\',this.value)">'
+        + ['Paid','Unpaid','Pending'].map(o => '<option' + ((f.status || 'Paid') === o ? ' selected' : '') + '>' + o + '</option>').join('')
+        + '</select></td>'
+      + '<td><input value="' + esc(f.remarks || '') + '" onchange="saveAfgFee(\'' + st.id + '\',\'remarks\',this.value)"></td></tr>';
+  }).join('');
+
+  h += '<div class="scroll' + (roll.length > 12 ? ' tall' : '') + '"><table class="ledger">'
+    + '<thead><tr><th class="sn">S.No</th><th>Name of child</th><th>Class</th>'
+    + '<th class="num">Full fee</th><th class="num">Parent share</th><th class="num">LEB share</th>'
+    + '<th class="num">Transport</th><th class="num">Total</th>'
+    + '<th>Status</th><th>Remarks</th></tr></thead><tbody>' + body
+    + '</tbody><tfoot><tr><td></td><td>Total (' + roll.length + ' students)</td><td></td>'
+    + '<td class="num">' + money(totFee) + '</td>'
+    + '<td class="num">' + money(totPar) + '</td>'
+    + '<td class="num">' + money(totLeb) + '</td>'
+    + '<td class="num">' + money(totTrans) + '</td>'
+    + '<td class="num">' + money(totFee + totTrans) + '</td>'
+    + '<td colspan="2">Collected: Rs ' + money(paid) + '</td></tr></tfoot></table></div>'
+    + '</div></div>';
+  return h;
+}
+
+async function saveAfgFee(studentId, field, value){
+  const d = afgState.data;
+  const m = afgState.month, y = afgState.year;
+  let row = d.fees.find(f => f.student_id === studentId && f.month === m && f.year === y);
+  const patch = {};
+  const numeric = ['amount','transport_amount','parent_contribution','leb_contribution'];
+  patch[field] = numeric.indexOf(field) >= 0 ? num(value) : value;
+  savingStart();
+  try{
+    if (row){
+      Object.assign(row, patch);
+      await db.update('afghan_fees', row.id, patch);
+    } else {
+      const st = d.students.find(x => x.id === studentId);
+      const base = { student_id:studentId, month:m, year:y,
+        amount:num(st.monthly_fee), transport_amount:num(st.transport_fee), status:'Paid' };
+      d.fees.push(await db.insert('afghan_fees', stampArea(Object.assign(base, patch))));
+    }
+    savingDone(true);
+    if (field !== 'remarks') render();
+  }catch(err){
+    savingDone(false);
+    toast('Could not save: ' + (err.message || err));
+  }
+}
+
+async function fillAfgFees(){
+  const d = afgState.data;
+  const m = afgState.month, y = afgState.year;
+  const missing = d.students.filter(st => st.status !== 'left'
+    && !d.fees.some(f => f.student_id === st.id && f.month === m && f.year === y));
+  if (!missing.length){ toast('Every student already has a row for this month'); return; }
+  await db.insertMany('afghan_fees', missing.map(st => stampArea({
+    student_id:st.id, month:m, year:y, amount:num(st.monthly_fee),
+    transport_amount:num(st.transport_fee), status:'Unpaid'
+  })));
+  toast(missing.length + ' row' + (missing.length === 1 ? '' : 's') + ' added for ' + MONTHS[m-1]);
+  render();
+}
+
+/* ---------- books, copies, uniform, transport ---------- */
+function afgSupport(d){
+  const rows = d.support.slice().sort((a,b) => (b.given_on||'').localeCompare(a.given_on||''));
+  if (!rows.length)
+    return '<div class="panel"><div class="empty"><p>Nothing recorded yet.</p>'
+      + '<button class="btn" onclick="editAfgSupport()">Record support given</button></div></div>';
+  const total = rows.reduce((s,x) => s + num(x.amount), 0);
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-afgs', 'Search\u2026', rows.length + ' records')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-afgs">'
+    + '<thead><tr><th>Date</th><th>Kind</th><th>Student</th><th>Items</th>'
+    + '<th class="num">Qty</th><th class="num">Amount</th><th>Remarks</th><th></th></tr></thead><tbody>'
+    + rows.map(x => {
+        const st = d.students.find(y2 => y2.id === x.student_id);
+        return '<tr><td>' + fmtDate(x.given_on) + '</td>'
+          + '<td>' + esc(AFG_SUPPORT[x.kind] || x.kind) + '</td>'
+          + '<td>' + esc(st ? st.full_name : 'Whole school') + '</td>'
+          + '<td>' + esc(x.items || '\u2014') + '</td>'
+          + '<td class="num">' + (x.quantity ? num(x.quantity) : '\u2014') + '</td>'
+          + '<td class="num">' + (num(x.amount) ? money(x.amount) : '\u2014') + '</td>'
+          + '<td>' + esc(x.remarks || '\u2014') + '</td>'
+          + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editAfgSupport(\'' + x.id + '\')">Edit</button> '
+          + '<button class="btn sm danger" onclick="delRow(\'afghan_support\',\'' + x.id + '\')">&times;</button></td></tr>';
+      }).join('')
+    + '</tbody><tfoot><tr><td colspan="5">Total</td><td class="num">Rs ' + money(total) + '</td>'
+    + '<td colspan="2"></td></tr></tfoot></table></div></div></div>';
+}
+
+/* ---------- results ---------- */
+function afgResults(d){
+  const rows = d.results.slice().sort((a,b) => (b.taken_on||'').localeCompare(a.taken_on||''));
+  if (!rows.length)
+    return '<div class="panel"><div class="empty"><p>No results recorded yet.</p>'
+      + '<button class="btn" onclick="editAfgResult()">Add a result</button></div></div>';
+  const pctOf = r => num(r.total_marks) ? Math.round(num(r.marks_obtained)/num(r.total_marks)*100) : null;
+  const band = p => p === null ? ['t-grey','\u2014']
+    : p >= 80 ? ['t-green','Excellent'] : p >= 60 ? ['t-blue','Good']
+    : p >= 40 ? ['t-gold','Fair'] : ['t-red','Needs support'];
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-afgr', 'Search results\u2026', rows.length + ' records')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-afgr">'
+    + '<thead><tr><th>Student</th><th>Term</th><th>Subject</th><th class="num">Marks</th>'
+    + '<th class="num">Out of</th><th class="num">%</th><th>Grade</th><th>Taken</th><th></th></tr></thead><tbody>'
+    + rows.map(r => {
+        const st = d.students.find(x => x.id === r.student_id);
+        const p = pctOf(r); const b = band(p);
+        return '<tr><td>' + esc(st ? st.full_name : '\u2014') + '</td>'
+          + '<td>' + esc(r.term || '\u2014') + (r.year ? ' ' + r.year : '') + '</td>'
+          + '<td>' + esc(r.subject || '\u2014') + '</td>'
+          + '<td class="num">' + (r.marks_obtained === null || r.marks_obtained === undefined ? '\u2014' : num(r.marks_obtained)) + '</td>'
+          + '<td class="num">' + num(r.total_marks) + '</td>'
+          + '<td class="num">' + (p === null ? '\u2014' : p + '%') + '</td>'
+          + '<td>' + (r.grade ? esc(r.grade) : '<span class="tag ' + b[0] + '">' + b[1] + '</span>') + '</td>'
+          + '<td>' + fmtDate(r.taken_on) + '</td>'
+          + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editAfgResult(\'' + r.id + '\')">Edit</button> '
+          + '<button class="btn sm danger" onclick="delRow(\'afghan_results\',\'' + r.id + '\')">&times;</button></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+}
+
+
+/* ---------- Afghan Schools: editors, export, sending ---------- */
+async function editAfgStudent(id){
+  const x = id ? (await db.list('afghan_students')).find(y => y.id === id)
+               : { status:'active', school:'Oklife School', admission_on:todayISO(), is_new_admission:true };
+  openModal(id ? 'Edit student' : 'Add student to the Oklife roll',
+    '<div class="grid g3">' + fld('af-name','Student name', x.full_name)
+    + fld('af-father','Father / guardian', x.father_name || x.guardian_name)
+    + fld('af-contact','Contact no.', x.contact) + '</div>'
+    + '<div class="grid g3">' + fld('af-class','Class', x.class_grade)
+    + fld('af-section','Section', x.section)
+    + fld('af-adm','Date of admission', x.admission_on, 'date') + '</div>'
+    + '<div class="grid g4">' + fld('af-fee','Full monthly fee (Rs)', x.monthly_fee, 'number')
+    + fld('af-parent','Parent share (Rs)', x.parent_share, 'number')
+    + fld('af-leb','LEB share (Rs)', x.leb_share, 'number')
+    + fld('af-tfee','Transport fee (Rs)', x.transport_fee, 'number') + '</div>'
+    + '<div class="grid g3">' + fld('af-serial','S. No', x.serial_no, 'number')
+    + sel('af-area','Area', ORG.areas.filter(a => ['kharadar','clifton'].indexOf(a.id) >= 0)
+        .map(a => [a.id, a.name]), x.area_id || 'clifton')
+    + fld('af-school','School', x.school || 'Oklife School') + '</div>'
+    + '<div class="grid g3">'
+    + '<label style="display:flex;gap:9px;align-items:center;color:var(--text);margin-bottom:16px">'
+      + '<input type="checkbox" id="af-new" style="width:auto"' + (x.is_new_admission ? ' checked' : '') + '> New admission</label>'
+    + '<label style="display:flex;gap:9px;align-items:center;color:var(--text);margin-bottom:16px">'
+      + '<input type="checkbox" id="af-trans" style="width:auto"' + (x.transport_needed ? ' checked' : '') + '> Uses transport</label>'
+    + sel('af-status','Status', [['active','Active'],['left','Left']], x.status) + '</div>'
+    + fld('af-notes','Notes', x.notes, 'textarea'),
+    async () => {
+      if (!mv('af-name')){ toast('A name is required'); return; }
+      const row = { full_name:mv('af-name'), father_name:mv('af-father'), contact:mv('af-contact'),
+        class_grade:mv('af-class'), section:mv('af-section'), admission_on:mv('af-adm') || null,
+        monthly_fee:num(mv('af-fee')), transport_fee:num(mv('af-tfee')),
+        serial_no:mv('af-serial') ? num(mv('af-serial')) : null,
+        parent_share:num(mv('af-parent')), leb_share:num(mv('af-leb')),
+        is_new_admission:$('af-new').checked, transport_needed:$('af-trans').checked,
+        status:mv('af-status'), notes:mv('af-notes'),
+        school:mv('af-school') || 'Oklife School', area_id:mv('af-area') };
+      id ? await db.update('afghan_students', id, row)
+         : await db.insert('afghan_students', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function editAfgSupport(id){
+  const d = afgState.data;
+  const x = id ? d.support.find(y => y.id === id) : { kind:'books_copies', given_on:todayISO() };
+  openModal(id ? 'Edit support' : 'Record support given',
+    '<div class="grid g3">'
+    + sel('sp-kind','Kind', Object.keys(AFG_SUPPORT).map(k => [k, AFG_SUPPORT[k]]), x.kind)
+    + fld('sp-date','Given on', x.given_on, 'date')
+    + sel('sp-student','Student', [['','\u2014 whole school \u2014']]
+        .concat(afgRollOrder(d.students).map(st => [st.id, st.full_name])), x.student_id) + '</div>'
+    + '<div class="grid g3">' + fld('sp-items','Items', x.items)
+    + fld('sp-qty','Quantity', x.quantity, 'number')
+    + fld('sp-amount','Amount (Rs)', x.amount, 'number') + '</div>'
+    + fld('sp-remarks','Remarks', x.remarks, 'textarea'),
+    async () => {
+      const row = { kind:mv('sp-kind'), given_on:mv('sp-date') || null,
+        student_id:mv('sp-student') || null, items:mv('sp-items'),
+        quantity:mv('sp-qty') ? num(mv('sp-qty')) : null, amount:num(mv('sp-amount')),
+        remarks:mv('sp-remarks') };
+      id ? await db.update('afghan_support', id, row)
+         : await db.insert('afghan_support', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function editAfgResult(id){
+  const d = afgState.data;
+  const x = id ? d.results.find(y => y.id === id)
+               : { total_marks:100, year:afgState.year, taken_on:todayISO() };
+  openModal(id ? 'Edit result' : 'Add a result',
+    '<div class="grid g3">'
+    + sel('rs-student','Student', afgRollOrder(d.students).map(st => [st.id, st.full_name]), x.student_id)
+    + fld('rs-term','Term', x.term)
+    + fld('rs-year','Year', x.year, 'number') + '</div>'
+    + '<div class="grid g4">' + fld('rs-subject','Subject', x.subject)
+    + fld('rs-marks','Marks obtained', x.marks_obtained, 'number')
+    + fld('rs-total','Out of', x.total_marks, 'number')
+    + fld('rs-grade','Grade', x.grade) + '</div>'
+    + '<div class="grid g2">' + fld('rs-date','Taken on', x.taken_on, 'date')
+    + fld('rs-remarks','Remarks', x.remarks) + '</div>',
+    async () => {
+      if (!mv('rs-student')){ toast('Choose a student'); return; }
+      const row = { student_id:mv('rs-student'), term:mv('rs-term'),
+        year:mv('rs-year') ? num(mv('rs-year')) : null, subject:mv('rs-subject'),
+        marks_obtained:mv('rs-marks') ? num(mv('rs-marks')) : null,
+        total_marks:num(mv('rs-total')) || 100, grade:mv('rs-grade'),
+        taken_on:mv('rs-date') || null, remarks:mv('rs-remarks') };
+      id ? await db.update('afghan_results', id, row)
+         : await db.insert('afghan_results', stampArea(row));
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function afgSheet(title, header, rows, filename, widths){
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = JURISDICTION_NAME;
+  const ws = wb.addWorksheet(title.slice(0,31));
+  const last = header.length;
+  ws.mergeCells('A1:' + columnLetter(last) + '1');
+  const t1 = ws.getCell('A1');
+  t1.value = 'OKLIFE SCHOOL \u2014 ' + title.toUpperCase();
+  t1.font = { bold:true, size:15 }; t1.alignment = { horizontal:'center' };
+  ws.mergeCells('A2:' + columnLetter(last) + '2');
+  const t2 = ws.getCell('A2');
+  t2.value = areaName('clifton') + ' area  \u00b7  ' + fmtDate(todayISO());
+  t2.font = { size:11, italic:true }; t2.alignment = { horizontal:'center' };
+  const thin = { style:'thin' }, border = { top:thin, left:thin, bottom:thin, right:thin };
+  header.forEach((hd,i) => {
+    const c = ws.getCell(columnLetter(i+1) + '4');
+    c.value = hd; c.font = { bold:true, size:11 }; c.border = border;
+    c.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEDEDED' } };
+  });
+  rows.forEach((r,i) => r.forEach((v,j) => {
+    const c = ws.getCell(columnLetter(j+1) + (5+i));
+    c.value = v; c.font = { size:11 }; c.border = border;
+  }));
+  (widths || header.map(() => 18)).forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  ws.getRow(4).height = 28;
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
+  toast('Downloaded');
+}
+
+async function exportAfgRoll(){
+  const d = afgState.data;
+  const rows = afgRollOrder(d.students).map((x,i) => [
+    x.serial_no || i+1, x.full_name, x.father_name || x.guardian_name || '',
+    x.class_grade || '', x.section || '', x.admission_on || '',
+    x.is_new_admission ? 'Yes' : 'No', num(x.monthly_fee) || '',
+    x.transport_needed ? 'Yes' : 'No', num(x.transport_fee) || '',
+    x.contact || '', x.status
+  ]);
+  if (!rows.length){ toast('Nobody on the roll'); return; }
+  await afgSheet('Student Roll',
+    ['S. No','Student Name','Father / Guardian','Class','Section','Date of Admission',
+     'New Admission','Monthly Fee','Transport','Transport Fee','Contact No.','Status'],
+    rows, 'Oklife_Student_Roll.xlsx',
+    [7,26,24,9,9,16,13,13,11,14,16,10]);
+}
+
+async function exportAfgFees(){
+  const d = afgState.data;
+  const m = afgState.month, y = afgState.year;
+  const roll = afgRollOrder(d.students.filter(s => s.status !== 'left'));
+  const rows = roll.map((st,i) => {
+    const f = d.fees.find(x => x.student_id === st.id && x.month === m && x.year === y) || {};
+    const amt = f.amount === undefined ? num(st.monthly_fee) : num(f.amount);
+    const tr  = f.transport_amount === undefined ? num(st.transport_fee) : num(f.transport_amount);
+    return [i+1, st.full_name, st.class_grade || '', amt || '', tr || '', amt + tr,
+            f.status || 'Paid', f.remarks || ''];
+  });
+  if (!rows.length){ toast('Nobody on the roll'); return; }
+  await afgSheet(MONTHS[m-1] + ' ' + y + ' Fees',
+    ['S. No','Name of Child','Class','Fees','Transport','Total','Status','Remarks'],
+    rows, 'Oklife_' + MONTHS[m-1] + '_' + y + '_Fees.xlsx',
+    [7,28,10,12,12,12,11,26]);
+}
+
+
+/* =====================================================================
+   Afghan English Classes — Kharadar and Clifton, four terms a year.
+   The two areas run the same programme under different leads.
+   ===================================================================== */
+const TERMS = [1,2,3,4];
+const termName = t => ['First','Second','Third','Fourth'][t-1] + ' term';
+
+async function englishLoad(){
+  const [classes, students, sessions, results] = await Promise.all([
+    sList('eng_classes'), sList('eng_students'), sList('eng_sessions'), sList('eng_results')
+  ]);
+  const attendance = await db.listIn('eng_attendance', 'session_id', sessions.map(x => x.id));
+  return { classes, students, sessions, results, attendance };
+}
+
+async function pageEnglish(v){
+  let d;
+  try{ d = await englishLoad(); }
+  catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('Afghan English Classes','')
+        + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
+        + 'Run <code>migrate-v50.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  engState.data = d;
+  const names = { overview:'Dashboard', classes:'Classes & leads', roll:'Students' };
+  let h = head('Afghan English Classes \u00b7 ' + (names[engState.tab] || ''),
+    'Run in ' + ORG.areas.filter(a => a.id === 'kharadar' || a.id === 'clifton')
+      .map(a => a.name).join(' and ') + ', four terms a year, each area under its own lead.',
+    engActions());
+  h += scopeBanner;
+  h += '<div id="eng-body">';
+  if (engState.tab === 'overview') h += engOverview(d);
+  if (engState.tab === 'classes')  h += engClasses(d);
+  if (engState.tab === 'roll')     h += engRoll(d);
+  h += '</div>';
+  v.innerHTML = h;
+}
+
+function engActions(){
+  const t = engState.tab;
+  if (t === 'classes') return '<button class="btn send" onclick="openShare(\'eng_classes\')">Send</button>'
+                            + '<button class="btn" onclick="editEngClass()">Add a class</button>';
+  if (t === 'roll')    return '<button class="btn ghost" onclick="openImport(\'eng_students\', engState.classId)">Import</button>'
+                            + '<button class="btn ghost" onclick="exportEngRoll()">Export</button>'
+                            + '<button class="btn" onclick="editEngStudent()">Add student</button>';
+  return '';
+}
+
+function engTermPicker(){
+  const years = []; for (let y = new Date().getFullYear()+1; y >= 2023; y--) years.push(y);
+  return '<span class="actions">'
+    + '<select style="width:140px" onchange="engState.term=+this.value;render()">'
+      + TERMS.map(t => '<option value="' + t + '"' + (engState.term === t ? ' selected' : '') + '>'
+        + termName(t) + '</option>').join('')
+    + '</select>'
+    + '<select style="width:92px" onchange="engState.year=+this.value;render()">'
+      + years.map(y => '<option' + (engState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
+    + '</select></span>';
+}
+
+function engOverview(d){
+  const areas = ORG.areas.filter(a => a.id === 'kharadar' || a.id === 'clifton');
+  const inTerm = d.classes.filter(c => c.term === engState.term && c.year === engState.year);
+  const rollOf = cid => d.students.filter(s => s.class_id === cid && s.status !== 'left');
+
+  let h = '<div class="panel"><h2>' + termName(engState.term) + ' ' + engState.year
+    + engTermPicker() + '</h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Area</th><th>Lead</th><th class="num">Classes</th><th class="num">Students</th>'
+    + '<th class="num">Sittings</th><th class="num">Attendance</th><th></th></tr></thead><tbody>'
+    + areas.map(a => {
+        const cls = inTerm.filter(c => c.area_id === a.id);
+        const ids = cls.map(c => c.id);
+        const roll = d.students.filter(s => ids.indexOf(s.class_id) >= 0 && s.status !== 'left');
+        const sess = d.sessions.filter(s => ids.indexOf(s.class_id) >= 0);
+        const sids = sess.map(s => s.id);
+        const att = d.attendance.filter(x => sids.indexOf(x.session_id) >= 0);
+        const lead = (cls.find(c => c.lead_name) || {}).lead_name;
+        return '<tr><td><b>' + esc(a.name) + '</b></td>'
+          + '<td>' + esc(lead || '\u2014') + '</td>'
+          + '<td class="num">' + (cls.length || '\u2014') + '</td>'
+          + '<td class="num">' + (roll.length || '\u2014') + '</td>'
+          + '<td class="num">' + (sess.length || '\u2014') + '</td>'
+          + '<td class="num">' + (att.length ? pct(att.filter(x => x.present).length, att.length) + '%' : '\u2014') + '</td>'
+          + '<td style="width:1%">' + (cls.length ? '' :
+              '<button class="btn sm ghost" onclick="editEngClass(null,\'' + a.id + '\')">Set up</button>') + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+
+  h += '<div class="panel"><h2>Across the year</h2><div class="body flush"><div class="scroll">'
+    + '<table class="ledger"><thead><tr><th>Area</th>'
+    + TERMS.map(t => '<th class="num">' + termName(t) + '</th>').join('')
+    + '<th class="num">Total</th></tr></thead><tbody>'
+    + areas.map(a => {
+        let tot = 0;
+        const cells = TERMS.map(t => {
+          const ids = d.classes.filter(c => c.area_id === a.id && c.term === t && c.year === engState.year)
+                               .map(c => c.id);
+          const n = d.students.filter(s => ids.indexOf(s.class_id) >= 0 && s.status !== 'left').length;
+          tot += n;
+          return '<td class="num">' + (n || '\u2014') + '</td>';
+        }).join('');
+        return '<tr><td>' + esc(a.name) + '</td>' + cells + '<td class="num"><b>' + tot + '</b></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+function engClasses(d){
+  const rows = d.classes.slice().sort((a,b) =>
+    (b.year||0) - (a.year||0) || (b.term||0) - (a.term||0) || (a.area_id||'').localeCompare(b.area_id||''));
+  if (!rows.length)
+    return '<div class="panel"><div class="empty"><p>No classes set up yet.</p>'
+      + '<button class="btn" onclick="editEngClass()">Add a class</button></div></div>';
+  return '<div class="panel"><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Class</th><th>Area</th><th>Term</th><th>Lead</th><th>Teacher</th>'
+    + '<th>Venue</th><th class="num">Students</th><th>Status</th><th></th></tr></thead><tbody>'
+    + rows.map(c => {
+        const n = d.students.filter(s => s.class_id === c.id && s.status !== 'left').length;
+        return '<tr><td><b>' + esc(c.name) + '</b>'
+          + (c.level ? '<div class="mini">' + esc(c.level) + '</div>' : '') + '</td>'
+          + '<td>' + esc(areaName(c.area_id)) + '</td>'
+          + '<td>' + (c.term ? termName(c.term) : '\u2014') + (c.year ? ' ' + c.year : '') + '</td>'
+          + '<td>' + esc(c.lead_name || '\u2014')
+            + (c.lead_contact ? '<div class="mini">' + esc(c.lead_contact) + '</div>' : '') + '</td>'
+          + '<td>' + esc(c.teacher_name || '\u2014') + '</td>'
+          + '<td>' + esc(c.venue || '\u2014') + '</td>'
+          + '<td class="num">' + n + '</td>'
+          + '<td>' + statusTag(c.status === 'running' ? 'ongoing' : c.status) + '</td>'
+          + '<td style="width:1%;white-space:nowrap">'
+          + '<button class="btn sm ghost" onclick="engState.classId=\'' + c.id + '\';engSub(\'roll\')">Roll</button> '
+          + '<button class="btn sm ghost" onclick="editEngClass(\'' + c.id + '\')">Edit</button> '
+          + '<button class="btn sm danger" onclick="delRow(\'eng_classes\',\'' + c.id + '\')">&times;</button></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+}
+
+function engRoll(d){
+  if (!d.classes.length)
+    return '<div class="panel"><div class="empty"><p>Add a class first.</p>'
+      + '<button class="btn" onclick="editEngClass()">Add a class</button></div></div>';
+  if (!engState.classId || !d.classes.some(c => c.id === engState.classId))
+    engState.classId = d.classes[0].id;
+  const cls = d.classes.find(c => c.id === engState.classId);
+  const roll = d.students.filter(s => s.class_id === cls.id)
+    .sort((a,b) => (a.serial_no || 9999) - (b.serial_no || 9999)
+      || a.full_name.localeCompare(b.full_name));
+
+  let h = '<div class="panel"><h2><span>' + esc(cls.name) + '</span>'
+    + '<span class="mini">' + esc(areaName(cls.area_id))
+      + (cls.term ? ' \u00b7 ' + termName(cls.term) + ' ' + (cls.year || '') : '')
+      + (cls.lead_name ? ' \u00b7 lead: ' + esc(cls.lead_name) : '') + '</span>'
+    + '<span class="actions"><select style="width:200px" onchange="engState.classId=this.value;render()">'
+      + d.classes.map(c => '<option value="' + c.id + '"' + (c.id === cls.id ? ' selected' : '') + '>'
+        + esc(c.name) + ' \u2014 ' + esc(areaName(c.area_id)) + '</option>').join('')
+    + '</select></span></h2><div class="body flush">';
+
+  if (!roll.length)
+    return h + '<div class="empty"><p>Nobody on this roll yet.</p>'
+      + '<button class="btn" onclick="editEngStudent()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'eng_students\', \'' + cls.id + '\')">Import from Excel</button>'
+      + '</div></div></div>';
+
+  h += tableTools('tbl-eng', 'Search this roll\u2026', roll.length + ' students')
+    + '<div class="scroll' + (roll.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-eng">'
+    + '<thead><tr><th class="sn">S.No</th><th>Student name</th><th>Guardian</th><th>Contact</th>'
+    + '<th class="num">Age</th><th>Enrolled</th><th>Status</th><th></th></tr></thead><tbody>'
+    + roll.map((st,i) => '<tr><td class="sn">' + (st.serial_no || i+1) + '</td>'
+      + '<td>' + esc(st.full_name) + '</td><td>' + esc(st.guardian_name || '\u2014') + '</td>'
+      + '<td>' + esc(st.contact || '\u2014') + '</td>'
+      + '<td class="num">' + (st.age ? num(st.age) : '\u2014') + '</td>'
+      + '<td>' + fmtDate(st.enrolled_on) + '</td>'
+      + '<td>' + (st.status === 'active' ? '<span class="tag t-green">Active</span>' : '<span class="tag t-grey">Left</span>') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editEngStudent(\'' + st.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'eng_students\',\'' + st.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+async function editEngClass(id, areaId){
+  const x = id ? (await db.list('eng_classes')).find(y => y.id === id)
+               : { status:'running', term:engState.term, year:engState.year, area_id:areaId || null };
+  const areas = ORG.areas.filter(a => a.id === 'kharadar' || a.id === 'clifton');
+  openModal(id ? 'Edit class' : 'Add an English class',
+    '<div class="grid g3">' + fld('ec-name','Class name', x.name)
+    + sel('ec-area','Area', areas.map(a => [a.id, a.name]), x.area_id || (areaId || areas[0].id))
+    + sel('ec-level','Level', [['','\u2014 not set \u2014'],['Beginner','Beginner'],
+        ['Intermediate','Intermediate'],['Advanced','Advanced']], x.level) + '</div>'
+    + '<div class="grid g3">'
+    + sel('ec-term','Term', TERMS.map(t => [t, termName(t)]), x.term)
+    + fld('ec-year','Year', x.year, 'number')
+    + sel('ec-status','Status', [['running','Running'],['completed','Completed'],['paused','Paused']], x.status) + '</div>'
+    + '<div class="grid g2">' + fld('ec-lead','Lead for this area', x.lead_name)
+    + fld('ec-leadc','Lead contact', x.lead_contact) + '</div>'
+    + '<div class="grid g3">' + fld('ec-teacher','Teacher', x.teacher_name)
+    + fld('ec-venue','Venue', x.venue) + fld('ec-days','Days', x.days) + '</div>'
+    + '<div class="grid g3">' + fld('ec-timing','Timing', x.timing)
+    + fld('ec-start','Started on', x.started_on, 'date')
+    + fld('ec-end','Ended on', x.ended_on, 'date') + '</div>'
+    + fld('ec-drive','Pictures folder (Drive link)', x.drive_url)
+    + fld('ec-notes','Notes', x.notes, 'textarea'),
+    async () => {
+      if (!mv('ec-name')){ toast('A class name is required'); return; }
+      const row = { name:mv('ec-name'), area_id:mv('ec-area'), level:mv('ec-level') || null,
+        term:num(mv('ec-term')), year:num(mv('ec-year')) || engState.year, status:mv('ec-status'),
+        lead_name:mv('ec-lead'), lead_contact:mv('ec-leadc'), teacher_name:mv('ec-teacher'),
+        venue:mv('ec-venue'), days:mv('ec-days'), timing:mv('ec-timing'),
+        started_on:mv('ec-start') || null, ended_on:mv('ec-end') || null,
+        drive_url:mv('ec-drive'), notes:mv('ec-notes') };
+      id ? await db.update('eng_classes', id, row) : await db.insert('eng_classes', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function editEngStudent(id){
+  const d = engState.data;
+  const x = id ? d.students.find(y => y.id === id)
+               : { status:'active', class_id:engState.classId, enrolled_on:todayISO() };
+  openModal(id ? 'Edit student' : 'Add a student',
+    '<div class="grid g2">' + fld('es-name','Student name', x.full_name)
+    + sel('es-class','Class', d.classes.map(c => [c.id, c.name + ' \u2014 ' + areaName(c.area_id)]), x.class_id) + '</div>'
+    + '<div class="grid g4">' + fld('es-guard','Guardian', x.guardian_name)
+    + fld('es-contact','Contact', x.contact) + fld('es-age','Age', x.age, 'number')
+    + fld('es-serial','S. No', x.serial_no, 'number') + '</div>'
+    + '<div class="grid g2">' + fld('es-enrolled','Enrolled on', x.enrolled_on, 'date')
+    + sel('es-status','Status', [['active','Active'],['left','Left']], x.status) + '</div>'
+    + fld('es-notes','Notes', x.notes, 'textarea'),
+    async () => {
+      if (!mv('es-name')){ toast('A name is required'); return; }
+      const cls = d.classes.find(c => c.id === mv('es-class'));
+      const row = { full_name:mv('es-name'), class_id:mv('es-class') || null,
+        guardian_name:mv('es-guard'), contact:mv('es-contact'),
+        age:mv('es-age') ? num(mv('es-age')) : null,
+        serial_no:mv('es-serial') ? num(mv('es-serial')) : null,
+        enrolled_on:mv('es-enrolled') || null, status:mv('es-status'), notes:mv('es-notes'),
+        area_id: cls ? cls.area_id : null };
+      id ? await db.update('eng_students', id, row) : await db.insert('eng_students', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function exportEngRoll(){
+  const d = engState.data;
+  const cls = d.classes.find(c => c.id === engState.classId);
+  if (!cls){ toast('Pick a class first'); return; }
+  const roll = d.students.filter(s => s.class_id === cls.id)
+    .sort((a,b) => (a.serial_no || 9999) - (b.serial_no || 9999));
+  if (!roll.length){ toast('Nobody on this roll'); return; }
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Roll');
+  ws.mergeCells('A1:G1');
+  const t = ws.getCell('A1');
+  t.value = 'AFGHAN ENGLISH CLASSES \u2014 ' + cls.name.toUpperCase();
+  t.font = { bold:true, size:14 }; t.alignment = { horizontal:'center' };
+  ws.mergeCells('A2:G2');
+  const t2 = ws.getCell('A2');
+  t2.value = areaName(cls.area_id) + ' area  \u00b7  ' + (cls.term ? termName(cls.term) : '')
+    + ' ' + (cls.year || '') + (cls.lead_name ? '  \u00b7  Lead: ' + cls.lead_name : '');
+  t2.font = { size:11, italic:true }; t2.alignment = { horizontal:'center' };
+  const thin = { style:'thin' }, border = { top:thin, left:thin, bottom:thin, right:thin };
+  ['S. No','Student Name','Guardian','Contact','Age','Enrolled On','Status'].forEach((h,i) => {
+    const c = ws.getCell(columnLetter(i+1) + '4');
+    c.value = h; c.font = { bold:true }; c.border = border;
+    c.alignment = { horizontal:'center' };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEDEDED' } };
+  });
+  roll.forEach((st,i) => {
+    [st.serial_no || i+1, st.full_name, st.guardian_name || '', st.contact || '',
+     st.age || '', st.enrolled_on || '', st.status].forEach((v,j) => {
+      const c = ws.getCell(columnLetter(j+1) + (5+i));
+      c.value = v; c.border = border;
+    });
+  });
+  [7,28,24,16,7,14,10].forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    'English_' + cls.name.replace(/[^\w]+/g,'_') + '_Roll.xlsx');
+  toast('Roll downloaded');
+}
+
+
+/* =====================================================================
+   The front door: choose what you are working on.
+   ===================================================================== */
+async function pageHome(v){
+  const open = WORKSPACE_ORDER.filter(workspaceAllowed);
+  const others = ORG.portfolios.filter(p =>
+    ['ace','afghan','national'].indexOf(p.id) < 0
+    && (LOCAL || isParentBody() || ME.portfolio_id === p.id));
+
+  let h = '<div class="home-head">'
+    + '<h1>' + esc(JURISDICTION_NAME) + '</h1>'
+    + '<p>' + (LOCAL ? 'Local mode'
+        : esc(ME.name || '') + ' \u00b7 ' + esc(roleName(ME.role))
+          + (ME.area_id ? ' \u00b7 ' + esc(areaName(ME.area_id)) : '')
+          + (ME.portfolio_id ? ' \u00b7 ' + esc(portName(ME.portfolio_id)) : ''))
+    + '</p></div>';
+
+  h += '<div class="home-grid">'
+    + open.map(k => {
+        const w = WORKSPACES[k];
+        return '<button class="wcard' + (w.board ? ' board' : '') + '" onclick="enterWorkspace(\'' + k + '\')">'
+          + '<span class="wc-title">' + esc(w.title) + '</span>'
+          + '<span class="wc-blurb">' + esc(w.blurb) + '</span>'
+          + (w.areas ? '<span class="wc-tag">' + w.areas.map(a => esc(areaName(a))).join(' &amp; ') + '</span>' : '')
+          + '<span class="wc-go">Open &rarr;</span></button>';
+      }).join('')
+    + '</div>';
+
+  if (others.length)
+    h += '<div class="home-sub"><h3>Not set up yet</h3>'
+      + '<p class="mini">These portfolios exist on the board but have no dashboard of their own. '
+      + 'Send me what each one records and I will build it.</p>'
+      + '<div class="pill-row">' + others.map(p => '<span class="tag t-grey">' + esc(p.name) + '</span>').join('')
+      + '</div></div>';
+
+  v.innerHTML = h;
+}
+
+
+/* =====================================================================
+   National Reimbursement — what the board claims back.
+   Out of school transportation, tuition fees, and the QSP sheet.
+   ===================================================================== */
+const CLAIM_KINDS = { transport:'Out of school transportation',
+                      tuition:'Tuition fees',
+                      qsp:'QSP out of school national sheet' };
+const CLAIM_STATUS = ['pending','submitted','approved','received','rejected'];
+const claimTag = st => {
+  const m = { pending:['t-grey','Pending'], submitted:['t-gold','Submitted'],
+              approved:['t-blue','Approved'], received:['t-green','Received'],
+              rejected:['t-red','Rejected'] };
+  const x = m[st] || ['t-grey', st];
+  return '<span class="tag ' + x[0] + '">' + x[1] + '</span>';
+};
+
+async function pageNational(v){
+  let claims;
+  try{ claims = await sList('national_claims'); }
+  catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('National Reimbursement','')
+        + '<div class="note warn"><b>This table is not in your database yet.</b><br>'
+        + 'Run <code>migrate-v60.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  natState.data = claims;
+  const names = { overview:'Dashboard', transport:CLAIM_KINDS.transport,
+                  tuition:CLAIM_KINDS.tuition, qsp:CLAIM_KINDS.qsp };
+  let h = head('National Reimbursement \u00b7 ' + (names[natState.tab] || ''),
+    'What the board has spent and is claiming back from national.',
+    natState.tab === 'overview' ? '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
+      : '<button class="btn ghost" onclick="exportClaims()">Export</button>'
+        + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
+        + '<button class="btn" onclick="editClaim(null,\'' + natState.tab + '\')">Add a claim</button>');
+  h += scopeBanner;
+  if (natState.tab === 'overview') h += natOverview(claims);
+  else h += natList(claims, natState.tab);
+  v.innerHTML = h;
+}
+
+function natSum(rows, field){ return rows.reduce((s,r) => s + num(r[field]), 0); }
+
+function natOverview(claims){
+  const y = natState.year;
+  const inYear = claims.filter(c => !c.year || c.year === y);
+  const years = []; for (let yy = new Date().getFullYear()+1; yy >= 2023; yy--) years.push(yy);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Claimed this year</div><div class="v">Rs ' + money(natSum(inYear,'amount_claimed') || natSum(inYear,'amount')) + '</div></div>'
+    + '<div><div class="k">Received</div><div class="v">Rs ' + money(natSum(inYear,'amount_received')) + '</div></div>'
+    + '<div><div class="k">Still outstanding</div><div class="v">Rs '
+      + money(Math.max(0, (natSum(inYear,'amount_claimed') || natSum(inYear,'amount')) - natSum(inYear,'amount_received')))
+      + '</div></div>'
+    + '<div><div class="k">Claims</div><div class="v">' + inYear.length + '</div></div>'
+    + '</div>';
+
+  h += '<div class="panel"><h2>By kind<span class="actions">'
+    + '<select style="width:92px" onchange="natState.year=+this.value;render()">'
+      + years.map(x => '<option' + (y === x ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select></span></h2><div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Kind</th><th class="num">Claims</th><th class="num">Claimed</th>'
+    + '<th class="num">Received</th><th class="num">Outstanding</th><th></th></tr></thead><tbody>'
+    + Object.keys(CLAIM_KINDS).map(k => {
+        const rows = inYear.filter(c => c.kind === k);
+        const claimed = natSum(rows,'amount_claimed') || natSum(rows,'amount');
+        const got = natSum(rows,'amount_received');
+        return '<tr><td><b>' + esc(CLAIM_KINDS[k]) + '</b></td>'
+          + '<td class="num">' + (rows.length || '\u2014') + '</td>'
+          + '<td class="num">' + (claimed ? money(claimed) : '\u2014') + '</td>'
+          + '<td class="num">' + (got ? money(got) : '\u2014') + '</td>'
+          + '<td class="num">' + (claimed - got > 0 ? money(claimed - got) : '\u2014') + '</td>'
+          + '<td style="width:1%"><button class="btn sm ghost" onclick="wsGo(\'' + k + '\')">Open</button></td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+
+  h += '<div class="panel"><h2>By status</h2><div class="body flush"><table class="ledger"><tbody>'
+    + CLAIM_STATUS.map(st => {
+        const rows = inYear.filter(c => (c.status || 'pending') === st);
+        if (!rows.length) return '';
+        return '<tr><td>' + claimTag(st) + '</td><td class="num">' + rows.length + '</td>'
+          + '<td class="num">Rs ' + money(natSum(rows,'amount_claimed') || natSum(rows,'amount')) + '</td></tr>';
+      }).join('') || '<tr><td colspan="3"><div class="empty"><p>No claims recorded yet.</p></div></td></tr>'
+    + '</tbody></table></div></div>';
+  return h;
+}
+
+function natList(claims, kind){
+  const rows = claims.filter(c => c.kind === kind)
+    .sort((a,b) => (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0)
+      || (a.student_name||'').localeCompare(b.student_name||''));
+  if (!rows.length)
+    return '<div class="panel"><div class="empty"><p>No claims recorded under '
+      + esc(CLAIM_KINDS[kind]) + '.</p>'
+      + '<button class="btn" onclick="editClaim(null,\'' + kind + '\')">Add the first one</button></div></div>';
+  const claimed = natSum(rows,'amount_claimed') || natSum(rows,'amount');
+  const got = natSum(rows,'amount_received');
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-nat', 'Search claims\u2026', rows.length + ' claims')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-nat">'
+    + '<thead><tr><th class="sn">#</th><th>Student</th><th>Institution</th><th>Class</th>'
+    + '<th>Period</th><th>Area</th><th class="num">Claimed</th><th class="num">Received</th>'
+    + '<th>Status</th><th></th></tr></thead><tbody>'
+    + rows.map((c,i) => '<tr><td class="sn">' + (i+1) + '</td>'
+      + '<td>' + esc(c.student_name || '\u2014')
+        + (c.father_name ? '<div class="mini">' + esc(c.father_name) + '</div>' : '') + '</td>'
+      + '<td>' + esc(c.institution || '\u2014') + '</td>'
+      + '<td>' + esc(c.class_grade || '\u2014') + '</td>'
+      + '<td>' + esc(c.months_covered || ((c.month ? MONTHS[c.month-1] + ' ' : '') + (c.year || ''))) + '</td>'
+      + '<td>' + esc(areaName(c.area_id)) + '</td>'
+      + '<td class="num">' + money(num(c.amount_claimed) || num(c.amount)) + '</td>'
+      + '<td class="num">' + (num(c.amount_received) ? money(c.amount_received) : '\u2014') + '</td>'
+      + '<td>' + claimTag(c.status || 'pending') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editClaim(\'' + c.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'national_claims\',\'' + c.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody><tfoot><tr><td colspan="6">Total</td>'
+    + '<td class="num">' + money(claimed) + '</td>'
+    + '<td class="num">' + money(got) + '</td><td colspan="2"></td></tr></tfoot></table></div></div></div>';
+}
+
+async function editClaim(id, kind){
+  const rows = await db.list('national_claims');
+  const c = id ? rows.find(x => x.id === id)
+               : { kind:kind || natState.tab, year:natState.year,
+                   month:new Date().getMonth()+1, status:'pending' };
+  const areas = ORG.areas.map(a => [a.id, a.name]);
+  openModal(id ? 'Edit claim' : 'Add a claim',
+    '<div class="grid g3">'
+    + sel('cl-kind','Kind', Object.keys(CLAIM_KINDS).map(k => [k, CLAIM_KINDS[k]]), c.kind)
+    + sel('cl-area','Area', areas, c.area_id || (ME.area_id || 'kharadar'))
+    + sel('cl-status','Status', CLAIM_STATUS.map(x => [x, x.charAt(0).toUpperCase()+x.slice(1)]), c.status) + '</div>'
+    + '<div class="grid g3">' + fld('cl-name','Student name', c.student_name)
+    + fld('cl-father','Father / guardian', c.father_name)
+    + fld('cl-class','Class', c.class_grade) + '</div>'
+    + '<div class="grid g3">' + fld('cl-inst','Institution', c.institution)
+    + sel('cl-month','Month', [['','\u2014']].concat(MONTHS.map((m,i) => [i+1, m])), c.month)
+    + fld('cl-year','Year', c.year, 'number') + '</div>'
+    + '<div class="grid g3">' + fld('cl-months','Months covered (as written on the sheet)', c.months_covered)
+    + fld('cl-claimed','Amount claimed (Rs)', c.amount_claimed || c.amount, 'number')
+    + fld('cl-received','Amount received (Rs)', c.amount_received, 'number') + '</div>'
+    + '<div class="grid g3">' + fld('cl-sub','Submitted on', c.submitted_on, 'date')
+    + fld('cl-rec','Received on', c.received_on, 'date')
+    + fld('cl-ref','Reference no.', c.reference_no) + '</div>'
+    + fld('cl-remarks','Remarks', c.remarks, 'textarea'),
+    async () => {
+      const row = { kind:mv('cl-kind'), area_id:mv('cl-area'), status:mv('cl-status'),
+        student_name:mv('cl-name'), father_name:mv('cl-father'), class_grade:mv('cl-class'),
+        institution:mv('cl-inst'), month:mv('cl-month') ? num(mv('cl-month')) : null,
+        year:mv('cl-year') ? num(mv('cl-year')) : null, months_covered:mv('cl-months'),
+        amount:num(mv('cl-claimed')), amount_claimed:num(mv('cl-claimed')),
+        amount_received:num(mv('cl-received')),
+        submitted_on:mv('cl-sub') || null, received_on:mv('cl-rec') || null,
+        reference_no:mv('cl-ref'), remarks:mv('cl-remarks') };
+      id ? await db.update('national_claims', id, row) : await db.insert('national_claims', row);
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+/* The reimbursement tab inside Afghan Matters shows the same claims,
+   narrowed to the Afghan areas, so the two never drift apart. */
+function afgClaims(d){
+  const claims = (natState.data || []).filter(c =>
+    ['kharadar','clifton'].indexOf(c.area_id) >= 0);
+  const claimed = natSum(claims,'amount_claimed') || natSum(claims,'amount');
+  const got = natSum(claims,'amount_received');
+  let h = '<div class="note">Afghan spending is claimed back from national. '
+    + 'Claims are kept in the <b>National Reimbursement</b> dashboard; this is the same list, '
+    + 'narrowed to Kharadar and Clifton. '
+    + '<button class="btn sm ghost" onclick="enterWorkspace(\'national\')">Open it</button></div>';
+  h += '<div class="stats">'
+    + '<div><div class="k">Claims</div><div class="v">' + claims.length + '</div></div>'
+    + '<div><div class="k">Claimed</div><div class="v">Rs ' + money(claimed) + '</div></div>'
+    + '<div><div class="k">Received</div><div class="v">Rs ' + money(got) + '</div></div>'
+    + '<div><div class="k">Outstanding</div><div class="v">Rs '
+      + money(Math.max(0, claimed - got)) + '</div></div></div>';
+  if (!claims.length)
+    return h + '<div class="panel"><div class="empty"><p>Nothing claimed yet.</p>'
+      + '<button class="btn" onclick="editClaim()">Add a claim</button></div></div>';
+  return h + natList(claims, claims[0].kind).replace('tbl-nat','tbl-afgclaims');
+}
+
+async function exportClaims(){
+  const kind = natState.tab === 'overview' ? null : natState.tab;
+  const rows = (natState.data || []).filter(c => !kind || c.kind === kind);
+  if (!rows.length){ toast('Nothing to export'); return; }
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Claims');
+  const header = ['S. No','Student Name','Father / Guardian','Institution','Class','Area',
+                  'Period','Amount Claimed','Amount Received','Status','Submitted','Reference','Remarks'];
+  ws.mergeCells('A1:' + columnLetter(header.length) + '1');
+  const t = ws.getCell('A1');
+  t.value = (kind ? CLAIM_KINDS[kind].toUpperCase() : 'NATIONAL REIMBURSEMENT');
+  t.font = { bold:true, size:14 }; t.alignment = { horizontal:'center' };
+  const thin = { style:'thin' }, border = { top:thin, left:thin, bottom:thin, right:thin };
+  header.forEach((hd,i) => {
+    const c = ws.getCell(columnLetter(i+1) + '3');
+    c.value = hd; c.font = { bold:true }; c.border = border;
+    c.alignment = { horizontal:'center', wrapText:true };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEDEDED' } };
+  });
+  rows.forEach((r,i) => {
+    [i+1, r.student_name || '', r.father_name || '', r.institution || '', r.class_grade || '',
+     areaName(r.area_id), r.months_covered || ((r.month ? MONTHS[r.month-1] + ' ' : '') + (r.year || '')),
+     num(r.amount_claimed) || num(r.amount), num(r.amount_received) || '',
+     r.status || 'pending', r.submitted_on || '', r.reference_no || '', r.remarks || ''
+    ].forEach((v,j) => { const c = ws.getCell(columnLetter(j+1) + (4+i)); c.value = v; c.border = border; });
+  });
+  [7,24,22,24,9,12,18,15,15,12,14,16,26].forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  ws.getRow(3).height = 28;
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    'National_Reimbursement' + (kind ? '_' + kind : '') + '.xlsx');
+  toast('Downloaded');
+}
+
 /* =====================================================================
    Interface: theme, mobile drawer, command palette, table tools,
    keyboard entry, undo, and a saving indicator.
@@ -2352,6 +3493,14 @@ function paletteItems(){
     { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
     juris && { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
     { label:'Download the attendance sheet', group:'ACE Classes', run:() => enterWorkspace('ace','register') },
+    { label:'Choose a portfolio',            group:'Go to', run:goHome },
+    { label:'Afghan student register',       group:'Afghan Matters', run:() => enterWorkspace('afghan','register') },
+    { label:'Afghan school data',            group:'Afghan Matters', run:() => enterWorkspace('afghan','school') },
+    { label:'Afghan English classes',        group:'Afghan Matters', run:() => enterWorkspace('afghan','english') },
+    { label:'National reimbursement',        group:'National', run:() => enterWorkspace('national') },
+    { label:'Out of school transportation',  group:'National', run:() => enterWorkspace('national','transport') },
+    { label:'Tuition fees claimed',          group:'National', run:() => enterWorkspace('national','tuition') },
+    { label:'QSP national sheet',            group:'National', run:() => enterWorkspace('national','qsp') },
     { label:'Take an ACE register',          group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='register'; render(); }, 60); } },
     { label:'ACE baseline scores',           group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='assess'; render(); }, 60); } },
     { label:'Add an ACE teacher',            group:'ACE Classes', run:() => { go('ace'); setTimeout(editAceTeacher, 60); } },
@@ -2512,6 +3661,8 @@ const PAGES = [
   { id:'students', label:'Student register'  },
   { id:'cases',    label:'Tuesday cases'     },
   { id:'ace',      label:'ACE Classes'       },
+  { id:'afghan',   label:'Afghan Matters'    },
+  { id:'national', label:'National Reimburse' },
   { id:'programs', label:'Programmes'        },
   { id:'prf',      label:'Permission forms'  },
   { id:'report',   label:'Quarterly report'  },
@@ -2523,33 +3674,97 @@ let scopeBanner = '';
 /* A portfolio opens as its own workspace: its own menu, its own dashboard,
    and none of the general board screens. Other portfolios will get the same
    treatment as their requirements are settled. */
-let workspace = 'board';
+let workspace = 'home';
+
+/* Everything is reached by choosing a portfolio first. The general board
+   work — fee sheets, cases, funds, programmes — is the Area Board, which
+   is a choice on the same screen. */
 const WORKSPACES = {
+  area: {
+    title:'Area Board',
+    blurb:'Fee sheets, Tuesday cases, funds, programmes, permission forms and the quarterly report.',
+    board:true
+  },
   ace: {
     portfolio:'ace',
     title:'ACE Classes',
+    blurb:'Classes and rolls, attendance, teacher training, baseline assessment, salary and transport.',
     nav:[['overview','Dashboard'],['classes','Classes & students'],['register','Attendance'],
          ['training','Teacher training'],['assess','Baseline'],['money','Salary & transport']]
+  },
+  afghan: {
+    portfolio:'afghan',
+    title:'Afghan Matters',
+    blurb:'Student register, English classes, school data, and what is reimbursed from national.',
+    areas:['kharadar','clifton'],
+    nav:[['overview','Dashboard'],['register','Student register'],['english','English classes'],
+         ['school','School data'],['claims','Reimbursement']]
+  },
+  national: {
+    portfolio:'national',
+    title:'National Reimbursement',
+    blurb:'Out of school transportation, tuition fees, and the QSP out of school national sheet.',
+    nav:[['overview','Dashboard'],['transport','Out of school transport'],
+         ['tuition','Tuition fees'],['qsp','QSP national sheet']]
   }
 };
-const ACE_GRADES = ['6','7','8'];
-const ACE_SUBJECTS = ['Maths','Science','English'];
+const WORKSPACE_ORDER = ['area','ace','afghan','national'];
+
+/* A portfolio workspace is open to you if your posting reaches it. */
+function workspaceAllowed(key){
+  const w = WORKSPACES[key];
+  if (!w) return false;
+  if (LOCAL) return true;
+  if (w.board) return true;
+  if (isParentBody()) return true;
+  if (roleTakesPortfolio(ME.role)) return ME.portfolio_id === w.portfolio;
+  // area people reach a portfolio that runs in their area
+  if (!w.areas) return true;
+  return w.areas.indexOf(ME.area_id) >= 0;
+}
 
 function enterWorkspace(key, tab){
+  if (!workspaceAllowed(key)){ toast('That is outside what your posting covers'); return; }
   workspace = key;
-  page = 'ace';
-  if (tab) aceState.tab = tab;
   const w = WORKSPACES[key];
-  if (w && w.portfolio && !lockedToPortfolio()) SCOPE.portfolio = w.portfolio;
+  if (w.board){
+    page = 'dash';
+    if (!lockedToPortfolio()) SCOPE.portfolio = 'all';
+  } else {
+    page = { ace:'ace', afghan:'afghan', national:'national' }[key];
+    if (w.portfolio && !lockedToPortfolio()) SCOPE.portfolio = w.portfolio;
+    if (tab) wsSetTab(key, tab);
+  }
   drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
 }
-function leaveWorkspace(){
-  workspace = 'board';
-  page = 'dash';
-  if (!lockedToPortfolio()) SCOPE.portfolio = 'all';
+function goHome(){
+  workspace = 'home';
+  page = 'home';
   drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
 }
+function leaveWorkspace(){ goHome(); }
+
 function aceGo(tab){ aceState.tab = tab; drawNav(); render(); window.scrollTo(0,0); toggleSide(false); }
+
+/* Each workspace keeps its own tab. */
+const afgState = { tab:'overview', month:new Date().getMonth()+1, year:new Date().getFullYear(),
+                   sub:'register', classId:null, term:1 };
+const engState = { tab:'overview', term:1, year:new Date().getFullYear(), classId:null };
+const natState = { tab:'overview', kind:'transport', year:new Date().getFullYear() };
+function wsSetTab(key, tab){
+  if (key === 'afghan')   afgState.tab = tab;
+  else if (key === 'national') natState.tab = tab;
+  else aceState.tab = tab;
+}
+function wsTab(){
+  if (workspace === 'afghan')   return afgState.tab;
+  if (workspace === 'national') return natState.tab;
+  return aceState.tab;
+}
+function wsGo(tab){
+  wsSetTab(workspace, tab);
+  drawNav(); render(); window.scrollTo(0,0); toggleSide(false);
+}
 const counts = {};
 
 function drawScopeBar(){
@@ -2634,9 +3849,13 @@ function pageAllowed(id){
 }
 
 function drawNav(){
-  if (workspace !== 'board'){ drawWorkspaceNav(); return; }
+  if (workspace === 'home'){ $('nav').innerHTML = ''; return; }
+  if (workspace !== 'area'){ drawWorkspaceNav(); return; }
   const label = p => (p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label;
-  $('nav').innerHTML = PAGES.filter(p => pageAllowed(p.id)).map(p =>
+  $('nav').innerHTML =
+    '<a class="back" onclick="goHome()"><span>&larr; All portfolios</span></a>'
+    + '<div class="nav-head">Area Board</div>'
+    + PAGES.filter(p => pageAllowed(p.id) && ['ace','afghan','english','national'].indexOf(p.id) < 0).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
     + '<span>' + label(p) + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
@@ -2644,18 +3863,17 @@ function drawNav(){
 function drawWorkspaceNav(){
   const w = WORKSPACES[workspace];
   $('nav').innerHTML =
-    '<a class="back" onclick="leaveWorkspace()"><span>&larr; Back to the board</span></a>'
+    '<a class="back" onclick="goHome()"><span>&larr; All portfolios</span></a>'
     + '<div class="nav-head">' + esc(w.title) + '</div>'
     + w.nav.filter(n => n[0] !== 'money' || canPortfolioMoney(w.portfolio))
-        .map(n => '<a class="' + (aceState.tab === n[0] ? 'on' : '') + '" '
-          + 'onclick="aceGo(\'' + n[0] + '\')"><span>' + n[1] + '</span></a>').join('');
+        .map(n => '<a class="' + (wsTab() === n[0] ? 'on' : '') + '" '
+          + 'onclick="wsGo(\'' + n[0] + '\')"><span>' + n[1] + '</span></a>').join('');
 }
 
 function go(id){
-  if (id === 'ace'){
-    if (!pageAllowed('ace')){ toast('That is outside what your posting covers'); return; }
-    enterWorkspace('ace'); return;
-  }
+  if (id === 'home'){ goHome(); return; }
+  const asWorkspace = { ace:'ace', afghan:'afghan', national:'national' }[id];
+  if (asWorkspace){ enterWorkspace(asWorkspace); return; }
   if (workspace !== 'board' && id !== 'ace') workspace = 'board';
   if (!pageAllowed(id)){
     toast('That is outside what your posting covers');
@@ -2666,7 +3884,8 @@ function go(id){
 
 async function render(){
   const v = $('view');
-  if (!pageAllowed(page)) page = 'dash';
+  if (workspace === 'home') page = 'home';
+  else if (workspace === 'area' && !pageAllowed(page)) page = 'dash';
   v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
   try{
     if (page === 'dash')      await pageDash(v);
@@ -2685,6 +3904,9 @@ async function render(){
     if (page === 'students')  await pageStudents(v);
     if (page === 'cases')     await pageCases(v);
     if (page === 'ace')       await pageAce(v);
+    if (page === 'afghan')    await pageAfghan(v);
+    if (page === 'national')  await pageNational(v);
+    if (page === 'home')      await pageHome(v);
     if (page === 'programs')  await pagePrograms(v);
     if (page === 'prf')       await pagePRF(v);
     if (page === 'report')    await pageReport(v);
@@ -3483,6 +4705,93 @@ const rs = n => 'Rs ' + money(n);
 
 async function shareContent(kind, id){
   const sign = ['', 'Regards,', ME.name || 'Local Education Board, Kharadar'];
+  if (kind === 'nat_claims'){
+    const rows = natState.data || [];
+    const claimed = natSum(rows,'amount_claimed') || natSum(rows,'amount');
+    const got = natSum(rows,'amount_received');
+    return { subject:'National reimbursement \u2014 position',
+      body:['Assalam-o-Alaikum,','',
+        'Reimbursement claimed from national:','',
+        Object.keys(CLAIM_KINDS).map(k => {
+          const r = rows.filter(c => c.kind === k);
+          if (!r.length) return null;
+          return '  ' + CLAIM_KINDS[k] + ': ' + r.length + ' claim(s), Rs '
+            + money(natSum(r,'amount_claimed') || natSum(r,'amount'))
+            + ' claimed, Rs ' + money(natSum(r,'amount_received')) + ' received';
+        }).filter(Boolean).join('\n'),
+        '', 'Total claimed: Rs ' + money(claimed),
+        'Total received: Rs ' + money(got),
+        'Outstanding: Rs ' + money(Math.max(0, claimed - got)),
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+      attach:'Press Export first, then attach the sheet.' };
+  }
+  if (kind === 'afg_roll' || kind === 'afg_fees' || kind === 'afg_support' || kind === 'afg_results'){
+    const d = afgState.data;
+    const roll = afgRollOrder(d.students.filter(x => x.status !== 'left'));
+    const head2 = 'Oklife School, ' + areaName('clifton') + ' area';
+    if (kind === 'afg_roll')
+      return { subject:'Oklife School \u2014 student roll',
+        body:['Assalam-o-Alaikum,','', head2 + ' \u2014 students on the roll:','',
+          roll.map((x,i) => (i+1) + '. ' + x.full_name
+            + (x.class_grade ? ' \u2014 Class ' + x.class_grade : '')
+            + (x.is_new_admission ? ' (new admission)' : '')
+            + (x.transport_needed ? ' \u00b7 transport' : '')).join('\n'),
+          '', 'Total on the roll: ' + roll.length + '.',
+          '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+        attach:'Press Export first if you want to attach the full roll.' };
+    if (kind === 'afg_fees'){
+      const m = afgState.month, y = afgState.year;
+      let tot = 0, paid = 0;
+      const lines = roll.map((st,i) => {
+        const f = d.fees.find(x => x.student_id === st.id && x.month === m && x.year === y) || {};
+        const amt = (f.amount === undefined ? num(st.monthly_fee) : num(f.amount))
+          + (f.transport_amount === undefined ? num(st.transport_fee) : num(f.transport_amount));
+        tot += amt; if (f.status === 'Paid') paid += amt;
+        return (i+1) + '. ' + st.full_name + ' \u2014 Rs ' + money(amt) + ' \u00b7 ' + (f.status || 'Paid');
+      });
+      return { subject:'Oklife School \u2014 ' + MONTHS[m-1] + ' ' + y + ' fees',
+        body:['Assalam-o-Alaikum,','', head2 + ', fees for ' + MONTHS[m-1] + ' ' + y + ':','',
+          lines.join('\n'), '', 'Total: Rs ' + money(tot) + '. Collected: Rs ' + money(paid) + '.',
+          '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+        attach:'Press Export first, then attach the sheet.' };
+    }
+    if (kind === 'afg_support'){
+      const byKind = {};
+      d.support.forEach(x => { byKind[x.kind] = (byKind[x.kind] || 0) + num(x.amount); });
+      return { subject:'Oklife School \u2014 support given',
+        body:['Assalam-o-Alaikum,','', head2 + ' \u2014 support provided:','',
+          Object.keys(byKind).map(k => '  ' + (AFG_SUPPORT[k] || k) + ': Rs ' + money(byKind[k])).join('\n'),
+          '', 'Records: ' + d.support.length + '.',
+          '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
+    }
+    const scored = d.results.filter(r => r.marks_obtained !== null && r.marks_obtained !== undefined);
+    return { subject:'Oklife School \u2014 results',
+      body:['Assalam-o-Alaikum,','', head2 + ' \u2014 results:','',
+        scored.map(r => {
+          const st = d.students.find(x => x.id === r.student_id);
+          const p = num(r.total_marks) ? Math.round(num(r.marks_obtained)/num(r.total_marks)*100) : null;
+          return '  ' + (st ? st.full_name : '') + ' \u2014 ' + (r.subject || r.term || '')
+            + ': ' + num(r.marks_obtained) + '/' + num(r.total_marks)
+            + (p === null ? '' : ' (' + p + '%)');
+        }).join('\n'),
+        '', 'Results recorded: ' + scored.length + '.',
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
+  }
+  if (kind === 'eng_classes'){
+    const d = engState.data;
+    const inTerm = d.classes.filter(c => c.term === engState.term && c.year === engState.year);
+    return { subject:'Afghan English Classes \u2014 ' + termName(engState.term) + ' ' + engState.year,
+      body:['Assalam-o-Alaikum,','',
+        'Afghan English Classes, ' + termName(engState.term) + ' ' + engState.year + ':','',
+        inTerm.map(c => c.name + ' \u2014 ' + areaName(c.area_id)
+          + (c.lead_name ? '\n   Lead: ' + c.lead_name
+             + (c.lead_contact ? ' (' + c.lead_contact + ')' : '') : '')
+          + (c.teacher_name ? '\n   Teacher: ' + c.teacher_name : '')
+          + (c.venue ? '\n   Venue: ' + c.venue : '')
+          + '\n   Students: ' + d.students.filter(s => s.class_id === c.id && s.status !== 'left').length
+        ).join('\n\n'),
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n') };
+  }
   if (kind === 'ace_teachers'){
     const d = aceState.data;
     const list = teacherOrder(d.teachers.filter(t => t.status === 'active'));
@@ -3785,6 +5094,23 @@ function importFields(target){
     { k:'account_type',   h:'Easy Paisa/Bank Account' },
     { k:'account_number', h:'Account Number' }
   ];
+  if (target === 'afghan_students') return [
+    { k:'full_name',   h:'Student Name', required:true },
+    { k:'father_name', h:'Father / Guardian' },
+    { k:'class_grade', h:'Class' },
+    { k:'section',     h:'Section' },
+    { k:'admission_on',h:'Date of Admission' },
+    { k:'monthly_fee', h:'Monthly Fee', type:'number' },
+    { k:'transport_fee', h:'Transport Fee', type:'number' },
+    { k:'contact',     h:'Contact No.' }
+  ];
+  if (target === 'eng_students') return [
+    { k:'full_name',     h:'Student Name', required:true },
+    { k:'guardian_name', h:'Guardian' },
+    { k:'contact',       h:'Contact' },
+    { k:'age',           h:'Age', type:'number' },
+    { k:'enrolled_on',   h:'Enrolled On' }
+  ];
   if (target === 'ace_students') return [
     { k:'full_name',      h:'Student Name', required:true },
     { k:'guardian_name',  h:'Guardian' },
@@ -3806,7 +5132,9 @@ function openImport(target, classId){
   IMPORT.target = target;
   IMPORT.classId = classId || null;
   IMPORT.fields = importFields(target);
-  const where = target === 'ace_teachers' ? 'the ACE teacher register'
+  const where = target === 'eng_students' ? 'this English class roll'
+    : target === 'afghan_students' ? 'the Oklife School roll'
+    : target === 'ace_teachers' ? 'the ACE teacher register'
     : target === 'ace_students' ? 'this ACE class roll'
     : target === 'students' ? 'the student register'
     : 'the <b>' + esc(SHEETS[feeState.sheet].short) + '</b> sheet for ' + MONTHS[feeState.month-1] + ' ' + feeState.year;
@@ -3882,8 +5210,8 @@ function drawImport(){
 function collectImport(){
   const map = {};
   IMPORT.fields.forEach(f => { const el = $('map-' + f.k); map[f.k] = el ? +el.value : -1; });
-  const nameKey = (IMPORT.target === 'students' || IMPORT.target === 'ace_teachers'
-                   || IMPORT.target === 'ace_students') ? 'full_name' : 'student_name';
+  const nameKey = ['students','ace_teachers','ace_students','afghan_students','eng_students']
+    .indexOf(IMPORT.target) >= 0 ? 'full_name' : 'student_name';
   const rows = [];
   for (let i = IMPORT.headerRow + 1; i < IMPORT.grid.length; i++){
     const r = IMPORT.grid[i] || [];
@@ -3937,6 +5265,27 @@ function drawPreview(){
 async function runImport(){
   const rows = collectImport();
   if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
+
+  if (IMPORT.target === 'eng_students'){
+    const d = engState.data;
+    const cls = d.classes.find(c => c.id === IMPORT.classId) || d.classes[0];
+    const fresh = rows.map(r => Object.assign({}, r, {
+      status:'active', class_id:cls ? cls.id : null,
+      area_id:cls ? cls.area_id : null,
+      enrolled_on:tidyDate(r.enrolled_on) || todayISO()
+    }));
+    await db.insertMany('eng_students', fresh);
+    closeModal(); toast(fresh.length + ' students imported'); render(); return;
+  }
+
+  if (IMPORT.target === 'afghan_students'){
+    const fresh = rows.map(r => stampArea(Object.assign({}, r, {
+      status:'active', school:'Oklife School',
+      admission_on:tidyDate(r.admission_on), is_new_admission:false
+    })));
+    await db.insertMany('afghan_students', fresh);
+    closeModal(); toast(fresh.length + ' students imported'); render(); return;
+  }
 
   if (IMPORT.target === 'ace_teachers' || IMPORT.target === 'ace_students'){
     const money = canPortfolioMoney('ace');
@@ -4910,6 +6259,7 @@ async function loadProfile(user){
 }
 
 function startApp(){
+  workspace = 'home'; page = 'home';
   $('gate').style.display = 'none';
   $('hold').style.display = 'none';
   $('app').style.display = 'block';
