@@ -383,6 +383,8 @@ tr.hidden-row{display:none}
 
 /* ============ save state ============ */
 .posting{display:block;color:#CFE6DB;font-weight:600;font-size:13px;letter-spacing:-.01em}
+.brand .sub.posting{color:#8FD3AC;font-weight:600}
+.brand .sub.posting.local{color:#F0C86A}
 .posting.local{color:#F0C86A}
 
 #saving{position:fixed;right:20px;bottom:20px;background:var(--surface);border:1px solid var(--line);
@@ -524,7 +526,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v4.0';
+const APP_VERSION = 'v4.1';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -1961,13 +1963,18 @@ const PAGES = [
   { id:'members',  label:'Board members', peopleOnly:true }
 ];
 let page = 'dash';
+let scopeBanner = '';
 const counts = {};
 
 function drawScopeBar(){
   const sub = $('brand-sub');
-  if (sub) sub.textContent = (SCOPE.area === 'jurisdiction' || SCOPE.area === 'all')
-    ? 'for Kharadar \u00b7 parent body'
-    : areaName(SCOPE.area) + ' area board';
+  if (sub){
+    sub.textContent = LOCAL ? 'Local mode \u2014 not signed in'
+      : roleName(ME.role)
+        + (ME.area_id ? ' \u00b7 ' + areaName(ME.area_id) : '')
+        + (ME.portfolio_id ? ' \u00b7 ' + portName(ME.portfolio_id) : '');
+    sub.className = 'sub posting' + (LOCAL ? ' local' : '');
+  }
   const box = $('scopebar');
   if (!box) return;
   let h = '';
@@ -2101,12 +2108,19 @@ async function pageDash(v){
 
   counts.cases = pending.length; counts.prf = prfs.filter(p => p.status === 'draft').length; drawNav();
 
+  scopeBanner = (!LOCAL && isParentBody() && SCOPE.area !== 'jurisdiction' && SCOPE.area !== 'all')
+    ? '<div class="note"><b>You are ' + esc(roleName(ME.role)) + ', looking into '
+      + esc(areaName(SCOPE.area)) + '.</b> Anything you add is filed against that area. '
+      + 'Use the selector above the menu to return to the whole jurisdiction.</div>'
+    : '';
+
   const late = prfs.filter(p => p.status === 'draft' && p.event_date && daysBetween(todayISO(), p.event_date) < 15);
 
   let h = head(scopeTitle(),
     MONTHS[now.getMonth()] + ' ' + now.getFullYear() + ' · quarter ' + quarterOf(now.getMonth()+1)
     + ' · ' + scopeLabel());
 
+  h += scopeBanner;
   if (LOCAL) h += '<div class="note"><b>Local mode.</b> Records are saved in this browser only, so nobody else can see them and clearing your browser data wipes them. '
     + configReason()
     + (canPersist ? '' : ' <b>This browser is blocking storage, so nothing will survive a refresh here.</b>') + '</div>';
@@ -4157,8 +4171,8 @@ function startApp(){
   initScope();
   drawScopeBar();
   const posting = roleName(ME.role)
-      + (ME.area_id ? ' \u00b7 ' + areaName(ME.area_id) : (roleTakesArea(ME.role) ? ' \u00b7 no area set' : ''))
-      + (ME.portfolio_id ? ' \u00b7 ' + portName(ME.portfolio_id) : '');
+      + (roleTakesArea(ME.role) && !ME.area_id ? ' \u00b7 no area set' : '')
+      + (roleTakesPortfolio(ME.role) && !ME.portfolio_id ? ' \u00b7 no portfolio set' : '');
   $('role-lbl').innerHTML =
     '<span class="posting' + (LOCAL ? ' local' : '') + '">' + esc(LOCAL ? 'Local mode \u2014 not signed in' : posting) + '</span>'
     + '<span class="mini" style="display:block;margin-top:3px">' + esc(APP_VERSION)
