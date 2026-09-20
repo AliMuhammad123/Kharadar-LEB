@@ -549,7 +549,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v4.6';
+const APP_VERSION = 'v4.7';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -2352,6 +2352,7 @@ function enterWorkspace(key, tab){
 function leaveWorkspace(){
   workspace = 'board';
   page = 'dash';
+  if (!lockedToPortfolio()) SCOPE.portfolio = 'all';
   drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
 }
 function aceGo(tab){ aceState.tab = tab; drawNav(); render(); window.scrollTo(0,0); toggleSide(false); }
@@ -2388,7 +2389,8 @@ function drawScopeBar(){
     h += '<label for="sc-port">Portfolio</label>'
       + '<select id="sc-port" onchange="setScope(\'portfolio\',this.value)">'
       + opts.map(o => '<option value="' + o[0] + '"' + (SCOPE.portfolio === o[0] ? ' selected' : '') + '>'
-          + esc(o[1]) + '</option>').join('') + '</select>';
+          + esc(o[1]) + (WORKSPACES[o[0]] ? '  \u2192 own dashboard' : '') + '</option>').join('')
+      + '</select>';
   }
   box.innerHTML = h;
 }
@@ -2396,6 +2398,12 @@ function setScope(what, value){
   SCOPE[what] = value;
   try{ window.localStorage.setItem('leb-scope', JSON.stringify(SCOPE)); }catch(e){}
   feeState.cycle = null;
+  // A portfolio with its own workspace opens that workspace, rather than
+  // quietly filtering the board screens behind the same menu.
+  if (what === 'portfolio'){
+    if (WORKSPACES[value]){ enterWorkspace(value); return; }
+    if (workspace !== 'board'){ workspace = 'board'; page = 'dash'; drawNav(); }
+  }
   drawScopeBar(); render();
 }
 function scopeLabel(){
@@ -2588,10 +2596,9 @@ async function pageDash(v){
   v.innerHTML = h;
 }
 function scopeTitle(){
-  if (SCOPE.portfolio !== 'all') return portName(SCOPE.portfolio);
-  if (SCOPE.area === 'all') return 'Local Education Board';
-  if (SCOPE.area === 'jurisdiction') return 'Jurisdiction';
-  return areaName(SCOPE.area) + ' Education Board';
+  if (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction')
+    return 'Aga Khan Education Board';
+  return areaName(SCOPE.area) + ' Local Education Board';
 }
 function decisionTag(d){
   const m = { pending:['t-gold','Pending'], approved:['t-green','Approved'], rejected:['t-red','Rejected'],
