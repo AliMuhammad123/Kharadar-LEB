@@ -243,6 +243,29 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 .note.warn{background:var(--red-bg);border-left-color:var(--red)}
 .note.ok{background:var(--green-bg);border-left-color:var(--green)}
 
+.attgrid th.namecol,.attgrid td.namecol{position:sticky;left:0;background:var(--surface);
+  min-width:190px;z-index:1}
+.attgrid thead th.namecol{background:var(--subtle)}
+.attgrid tfoot td.namecol{background:var(--subtle)}
+.attgrid th.daycol,.attgrid td.daycol{text-align:center;min-width:74px;padding:8px 6px}
+.attgrid .mini{margin-top:2px}
+.linkish{background:none;border:none;color:var(--muted);text-decoration:underline;
+  cursor:pointer;font-size:11.5px;padding:0}
+.linkish:hover{color:var(--accent-2)}
+.tick{width:34px;height:30px;border:1px solid var(--line);background:var(--surface);
+  border-radius:6px;cursor:pointer;font-size:15px;color:var(--muted);line-height:1;
+  transition:background-color 120ms var(--ease),border-color 120ms var(--ease),color 120ms var(--ease)}
+.tick:hover{border-color:var(--accent-2)}
+.tick.on{background:var(--green-bg);border-color:var(--green);color:var(--green);font-weight:700}
+
+.acegrid td{vertical-align:top}
+.acegrid td b{font-size:15px}
+.acegrid tbody tr:hover{background:var(--subtle)}
+.nav .back{color:#8FD3AC;font-size:13px;padding-bottom:12px}
+.nav .back:hover{color:#fff;background:transparent}
+.nav-head{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#7FA394;
+  font-weight:600;padding:6px 12px 8px;border-top:1px solid rgba(255,255,255,.08);margin-top:2px}
+
 .bar{height:5px;background:var(--line);border-radius:20px;margin-top:7px;max-width:250px;overflow:hidden}
 .bar > span{display:block;height:5px;border-radius:20px;background:var(--accent-2)}
 .bar.g > span{background:var(--green)}
@@ -526,7 +549,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v4.3';
+const APP_VERSION = 'v4.6';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -1111,21 +1134,36 @@ async function pageAce(v){
   }
   aceState.data = d;
 
-  let h = head('ACE Classes',
-    'Classes, the students on the roll, attendance for every sitting, teacher training, and the baseline assessment.',
-    aceTabActions());
-  h += '<div class="panel"><div class="body flush"><div class="tabs">'
-    + ACE_TABS.map(t => '<button class="' + (aceState.tab === t[0] ? 'on' : '') + '" '
-        + 'onclick="aceState.tab=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
-    + '</div></div></div>';
+  const tabName = (ACE_TABS.find(t => t[0] === aceState.tab) || ['','Dashboard'])[1];
+  let h = head('ACE Classes \u00b7 ' + tabName,
+    aceBlurb(aceState.tab), aceTabActions());
+  if (workspace !== 'ace')
+    h += '<div class="panel"><div class="body flush"><div class="tabs">'
+      + ACE_TABS.map(t => '<button class="' + (aceState.tab === t[0] ? 'on' : '') + '" '
+          + 'onclick="aceState.tab=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
+      + '</div></div></div>';
+  h += scopeBanner;
 
+  h += '<div id="ace-body">';
   if (aceState.tab === 'overview')  h += aceOverview(d);
   if (aceState.tab === 'classes')   h += aceClasses(d);
   if (aceState.tab === 'register')  h += aceRegister(d);
   if (aceState.tab === 'training')  h += aceTraining(d);
   if (aceState.tab === 'assess')    h += aceAssess(d);
   if (aceState.tab === 'money')     h += await aceMoney(d);
+  h += '</div>';
   v.innerHTML = h;
+}
+
+function aceBlurb(tab){
+  return ({
+    overview:'Grades 6, 7 and 8 in Maths, Science and English \u2014 across every class in view.',
+    classes:'Teachers, the classes they run, and the students on each roll.',
+    register:'One register per class per sitting, with the teacher marked too.',
+    training:'Teacher training, online or in person, and who attended.',
+    assess:'The baseline assessment, out of 30 marks.',
+    money:'Teacher salary, transport and miscellaneous costs.'
+  })[tab] || '';
 }
 
 function aceTabActions(){
@@ -1165,6 +1203,8 @@ function aceOverview(d){
     + '<div><div class="k">Average baseline</div><div class="v">' + (scored.length ? avg.toFixed(1) + ' / 30' : '\u2014') + '</div></div>'
     + '</div>';
 
+  h += aceGrid(d);
+
   if (!d.classes.length)
     return h + '<div class="panel"><div class="empty"><p>No ACE classes recorded yet. '
       + 'Start by adding a teacher, then a class, then the students on its roll.</p>'
@@ -1187,7 +1227,9 @@ function aceOverview(d){
         const cavg = sc.length ? (sc.reduce((t,a) => t + num(a.score), 0) / sc.length) : null;
         const teacher = d.teachers.find(t => t.id === c.teacher_id);
         return '<tr><td><b>' + esc(c.name) + '</b>'
-          + (c.venue ? '<div class="mini">' + esc(c.venue) + '</div>' : '') + '</td>'
+          + '<div class="mini">' + (c.grade ? 'Grade ' + esc(c.grade) : 'no grade')
+          + (c.subject ? ' \u00b7 ' + esc(c.subject) : '')
+          + (c.venue ? ' \u00b7 ' + esc(c.venue) : '') + '</div></td>'
           + '<td>' + esc(teacher ? teacher.full_name : '\u2014') + '</td>'
           + '<td class="num">' + roll.length + '</td>'
           + '<td class="num">' + sess.length + '</td>'
@@ -1199,6 +1241,62 @@ function aceOverview(d){
     + '</tbody></table></div></div></div>';
   return h;
 }
+
+
+/* Grades down the side, subjects across the top. Each cell holds the roll,
+   the attendance and the average baseline for that combination. */
+function aceGrid(d){
+  const cellFor = (g, sub) => {
+    const classes = d.classes.filter(c => String(c.grade || '') === g
+      && (c.subject || '').toLowerCase() === sub.toLowerCase());
+    if (!classes.length) return null;
+    const ids = classes.map(c => c.id);
+    const roll = d.students.filter(s => ids.indexOf(s.class_id) >= 0 && s.status !== 'left');
+    const sess = d.sessions.filter(s => ids.indexOf(s.class_id) >= 0);
+    const sids = sess.map(s => s.id);
+    const att  = d.attendance.filter(a => sids.indexOf(a.session_id) >= 0);
+    const sc   = d.assessments.filter(a => a.kind === 'baseline' && a.score !== null
+                   && roll.some(r => r.id === a.ace_student_id));
+    return {
+      classes:classes.length,
+      students:roll.length,
+      attendance: att.length ? pct(att.filter(a => a.present).length, att.length) : null,
+      baseline: sc.length ? (sc.reduce((t,a) => t + num(a.score), 0) / sc.length) : null
+    };
+  };
+
+  const any = ACE_GRADES.some(g => ACE_SUBJECTS.some(sub => cellFor(g, sub)));
+  const unplaced = d.classes.filter(c => !c.grade || !c.subject).length;
+
+  let h = '<div class="panel"><h2>Grades and subjects'
+    + '<span class="mini">Grades 6\u20138 \u00b7 Maths, Science, English</span></h2>'
+    + '<div class="body flush"><div class="scroll"><table class="ledger acegrid">'
+    + '<thead><tr><th>Grade</th>' + ACE_SUBJECTS.map(x => '<th>' + esc(x) + '</th>').join('')
+    + '<th class="num">Students</th></tr></thead><tbody>'
+    + ACE_GRADES.map(g => {
+        const rowTotal = ACE_SUBJECTS.reduce((t,sub) => {
+          const c = cellFor(g, sub); return t + (c ? c.students : 0);
+        }, 0);
+        return '<tr><td><b>Grade ' + g + '</b></td>'
+          + ACE_SUBJECTS.map(sub => {
+              const c = cellFor(g, sub);
+              if (!c) return '<td><button class="btn sm ghost" onclick="newAceClass(\'' + g + '\',\'' + sub + '\')">Set up</button></td>';
+              return '<td><b>' + c.students + '</b> student' + (c.students === 1 ? '' : 's')
+                + '<div class="mini">'
+                + (c.attendance !== null ? c.attendance + '% attendance' : 'no register yet')
+                + (c.baseline !== null ? ' \u00b7 ' + c.baseline.toFixed(1) + '/30' : '')
+                + '</div></td>';
+            }).join('')
+          + '<td class="num">' + (rowTotal || '\u2014') + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div>'
+    + (unplaced ? '<div style="padding:12px 18px;border-top:1px solid var(--line)">'
+        + '<span class="mini">' + unplaced + ' class' + (unplaced === 1 ? '' : 'es')
+        + ' without a grade or subject set \u2014 open the class to fill them in.</span></div>' : '')
+    + '</div></div>';
+  return any || unplaced ? h : h;
+}
+function newAceClass(grade, subject){ editAceClass(null, grade, subject); }
 
 /* ---------- classes, teachers, roll ---------- */
 function aceClasses(d){
@@ -1251,44 +1349,265 @@ function aceClasses(d){
 }
 
 
-/* ---------- attendance register ---------- */
+/* ---------- attendance: the month grid, laid out as their own sheet ----------
+   Students down the side, the dates the class actually met across the top,
+   a tick or a dash in each cell and a total per student. */
+function aceMonthDates(d, classId){
+  const key = aceState.year + '-' + String(aceState.month).padStart(2,'0');
+  return d.sessions.filter(x => x.class_id === classId && (x.held_on || '').slice(0,7) === key)
+                   .sort((a,b) => (a.held_on||'').localeCompare(b.held_on||''));
+}
+const dayLabel = iso => {
+  if (!iso) return '';
+  const p = iso.split('-');
+  return parseInt(p[2],10) + ' ' + MONTHS[parseInt(p[1],10)-1];
+};
+/* The roll keeps the order people were put on it, the way a paper sheet does,
+   so families and later joiners stay where you expect them. */
+function rollOrder(list){
+  return list.slice().sort((a,b) =>
+    (a.enrolled_on || '9999').localeCompare(b.enrolled_on || '9999')
+    || (a.created_at || '').localeCompare(b.created_at || '')
+    || a.full_name.localeCompare(b.full_name));
+}
+
 function aceRegister(d){
-  const sessions = d.sessions.slice().sort((a,b) => (b.held_on||'').localeCompare(a.held_on||''));
   if (!d.classes.length)
     return '<div class="panel"><div class="empty"><p>A register belongs to a class, and there are '
       + 'no classes yet.</p><button class="btn" onclick="editAceClass()">Add a class</button> '
-      + '<button class="btn ghost" onclick="aceState.tab=\'classes\';render()">Go to classes</button></div></div>';
-  if (!d.students.length)
-    return '<div class="panel"><div class="empty"><p>Nobody is on a class roll yet, so there is '
-      + 'nobody to mark.</p><button class="btn" onclick="editAceStudent(null,\'' + d.classes[0].id + '\')">Add a student</button> '
-      + '<button class="btn ghost" onclick="aceState.tab=\'classes\';render()">Go to classes</button></div></div>';
-  if (!sessions.length)
-    return '<div class="panel"><div class="empty"><p>No registers taken yet.</p>'
-      + '<button class="btn" onclick="editAceSession()">Take the first register</button></div></div>';
+      + '<button class="btn ghost" onclick="aceGo(\'classes\')">Go to classes</button></div></div>';
 
-  return '<div class="panel"><h2>Registers<span class="mini">' + sessions.length + ' sittings</span></h2>'
-    + '<div class="body flush">'
-    + tableTools('tbl-ace-sess', 'Search by class, date or topic\u2026', sessions.length + ' rows')
-    + '<div class="scroll' + (sessions.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-ace-sess">'
-    + '<thead><tr><th>Date</th><th>Class</th><th>Topic</th><th>Teacher</th>'
-    + '<th class="num">Present</th><th class="num">Attendance</th><th>Pictures</th><th></th></tr></thead><tbody>'
-    + sessions.map(x => {
-        const c = d.classes.find(y => y.id === x.class_id);
-        const att = d.attendance.filter(a => a.session_id === x.id);
-        const here = att.filter(a => a.present).length;
-        return '<tr><td>' + fmtDate(x.held_on) + '</td>'
-          + '<td>' + esc(c ? c.name : '\u2014') + '</td>'
-          + '<td>' + esc(x.topic || '\u2014') + '</td>'
-          + '<td>' + (x.teacher_present ? '<span class="tag t-green">Present</span>'
-                                        : '<span class="tag t-red">Absent</span>') + '</td>'
-          + '<td class="num">' + here + ' of ' + att.length + '</td>'
-          + '<td class="num">' + (att.length ? pct(here, att.length) + '%' : '\u2014') + '</td>'
-          + '<td>' + (x.drive_url ? '<a href="' + esc(x.drive_url) + '" target="_blank" rel="noopener">Open</a>' : '<span class="mini">none</span>') + '</td>'
-          + '<td style="width:1%;white-space:nowrap">'
-          + '<button class="btn sm ghost" onclick="editAceSession(\'' + x.id + '\')">Open</button> '
-          + '<button class="btn sm danger" onclick="delRow(\'ace_sessions\',\'' + x.id + '\')">&times;</button></td></tr>';
+  if (!aceState.classId || !d.classes.some(c => c.id === aceState.classId))
+    aceState.classId = d.classes[0].id;
+  const cls = d.classes.find(c => c.id === aceState.classId);
+  const roll = rollOrder(d.students.filter(s => s.class_id === cls.id && s.status !== 'left'));
+  const dates = aceMonthDates(d, cls.id);
+  const years = []; for (let y = new Date().getFullYear()+1; y >= 2023; y--) years.push(y);
+
+  const mark = (sid, stid) => d.attendance.find(a => a.session_id === sid && a.ace_student_id === stid);
+
+  let h = '<div class="panel"><h2>'
+    + '<span>' + esc(cls.name) + '</span>'
+    + '<span class="actions">'
+    + '<select style="width:190px" onchange="aceState.classId=this.value;redrawRegister()">'
+      + d.classes.map(c => '<option value="' + c.id + '"' + (c.id === cls.id ? ' selected' : '') + '>'
+          + esc(c.name) + '</option>').join('')
+    + '</select>'
+    + '<select style="width:130px" onchange="aceState.month=+this.value;redrawRegister()">'
+      + MONTHS.map((m,i) => '<option value="' + (i+1) + '"' + (aceState.month === i+1 ? ' selected' : '') + '>'
+          + m + '</option>').join('')
+    + '</select>'
+    + '<select style="width:92px" onchange="aceState.year=+this.value;redrawRegister()">'
+      + years.map(y => '<option' + (aceState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
+    + '</select>'
+    + '<button class="btn sm" onclick="addAceDate()">Add a date</button>'
+    + '<button class="btn sm gold" onclick="exportAceAttendance()">Download sheet</button>'
+    + '</span></h2><div class="body flush">';
+
+  if (!roll.length)
+    return h + '<div class="empty"><p>Nobody is on this class roll yet.</p>'
+      + '<button class="btn" onclick="editAceStudent(null,\'' + cls.id + '\')">Add a student</button>'
+      + '</div></div></div>';
+
+  if (!dates.length)
+    return h + '<div class="empty"><p>The class has no dates recorded for '
+      + MONTHS[aceState.month-1] + ' ' + aceState.year + '.</p>'
+      + '<button class="btn" onclick="addAceDate()">Add the first date</button></div></div></div>';
+
+  h += '<div class="scroll"><table class="ledger attgrid"><thead><tr>'
+    + '<th class="namecol">Student name</th>'
+    + dates.map(x => '<th class="daycol" title="' + esc(x.topic || '') + '">' + esc(dayLabel(x.held_on))
+        + '<div class="mini"><button class="linkish" onclick="editAceSession(\'' + x.id + '\')">edit</button></div></th>').join('')
+    + '<th class="num">Total</th></tr></thead><tbody>'
+    + roll.map(st => {
+        let total = 0;
+        const cells = dates.map(x => {
+          const m = mark(x.id, st.id);
+          const on = !!(m && m.present);
+          if (on) total++;
+          return '<td class="daycol"><button class="tick' + (on ? ' on' : '') + '" '
+            + 'onclick="toggleAtt(\'' + x.id + '\',\'' + st.id + '\')" '
+            + 'title="' + esc(st.full_name + ' \u00b7 ' + dayLabel(x.held_on)) + '">'
+            + (on ? '\u2713' : '\u2014') + '</button></td>';
+        }).join('');
+        return '<tr><td class="namecol">' + esc(st.full_name) + '</td>' + cells
+          + '<td class="num"><b>' + total + '</b></td></tr>';
       }).join('')
-    + '</tbody></table></div></div></div>';
+    + '</tbody><tfoot><tr><td class="namecol">Present</td>'
+    + dates.map(x => {
+        const n = d.attendance.filter(a => a.session_id === x.id && a.present).length;
+        return '<td class="daycol">' + n + '</td>';
+      }).join('')
+    + '<td class="num">' + d.attendance.filter(a => a.present
+        && dates.some(x => x.id === a.session_id)).length + '</td></tr></tfoot></table></div>';
+
+  h += '<div style="padding:12px 18px;border-top:1px solid var(--line)" class="mini">'
+    + '\u2713 = Present \u00b7 \u2014 = Not attended \u00b7 click a cell to change it. '
+    + 'Teacher attendance, the topic and the pictures for a date sit behind <b>edit</b> in its column.'
+    + '</div></div></div>';
+  return h;
+}
+
+function redrawRegister(){
+  const box = $('ace-body');
+  if (box) box.innerHTML = aceRegister(aceState.data);
+}
+
+async function toggleAtt(sessionId, studentId){
+  const d = aceState.data;
+  const existing = d.attendance.find(a => a.session_id === sessionId && a.ace_student_id === studentId);
+  savingStart();
+  try{
+    if (existing){
+      const next = !existing.present;
+      existing.present = next;
+      redrawRegister();
+      await db.update('ace_attendance', existing.id, { present:next });
+    } else {
+      const row = { session_id:sessionId, ace_student_id:studentId, present:true };
+      d.attendance.push(Object.assign({ id:'tmp' }, row));
+      redrawRegister();
+      const saved = await db.insert('ace_attendance', row);
+      const i = d.attendance.findIndex(a => a.id === 'tmp');
+      if (i >= 0) d.attendance[i] = saved;
+    }
+    savingDone(true);
+  }catch(err){
+    savingDone(false);
+    toast('Could not save that: ' + (err.message || err));
+    render();
+  }
+}
+
+async function addAceDate(){
+  const d = aceState.data;
+  const cls = d.classes.find(c => c.id === aceState.classId);
+  const suggested = aceState.year + '-' + String(aceState.month).padStart(2,'0') + '-'
+    + String(new Date().getDate()).padStart(2,'0');
+  openModal('Add a date to ' + cls.name,
+    '<div class="grid g2">' + fld('nd-date','Date the class met', suggested, 'date')
+    + fld('nd-topic','Topic covered', '') + '</div>'
+    + '<label style="display:flex;gap:9px;align-items:center;color:var(--text);margin-bottom:14px">'
+    + '<input type="checkbox" id="nd-teacher" style="width:auto" checked> Teacher present</label>'
+    + fld('nd-drive','Pictures of this sitting (Drive link)', ''),
+    async () => {
+      const day = mv('nd-date');
+      if (!day){ toast('Pick a date'); return; }
+      try{
+        const saved = await db.insert('ace_sessions', stampArea({
+          class_id:cls.id, held_on:day, topic:mv('nd-topic'),
+          teacher_present:$('nd-teacher').checked, drive_url:mv('nd-drive'),
+          teacher_id:cls.teacher_id || null
+        }));
+        d.sessions.push(saved);
+        aceState.month = parseInt(day.slice(5,7), 10);
+        aceState.year  = parseInt(day.slice(0,4), 10);
+      }catch(err){
+        toast(/duplicate|unique/i.test(err.message || '')
+          ? 'That class already has a register for that date'
+          : 'Could not add it: ' + (err.message || err));
+        return;
+      }
+      closeModal(); toast('Date added \u2014 now tick who attended'); redrawRegister();
+    }, 'Add date');
+}
+
+
+/* Downloads the month exactly as the paper sheet reads:
+   REMEDIAL CLASSES / <MONTH YEAR> ATTENDANCE SHEET, names down the side,
+   the dates met across the top, a tick or a dash, and a total. */
+async function exportAceAttendance(){
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  const d = aceState.data;
+  const cls = d.classes.find(c => c.id === aceState.classId);
+  const roll = rollOrder(d.students.filter(x => x.class_id === cls.id && x.status !== 'left'));
+  const dates = aceMonthDates(d, cls.id);
+  if (!dates.length){ toast('No dates recorded for this month'); return; }
+
+  const M = MONTHS[aceState.month-1], Y = aceState.year;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Aga Khan Education Board for Kharadar';
+  const ws = wb.addWorksheet((M + ' ' + Y).slice(0,31));
+  const lastCol = 2 + dates.length;           // A = name, then dates, then Total
+  const colLetter = i => { let n = i, out = ''; while (n > 0){ const r = (n-1) % 26;
+    out = String.fromCharCode(65+r) + out; n = Math.floor((n-1)/26); } return out; };
+  const span = r => 'A' + r + ':' + colLetter(lastCol) + r;
+
+  ws.mergeCells(span(1));
+  const t1 = ws.getCell('A1');
+  t1.value = 'REMEDIAL CLASSES';
+  t1.font = { bold:true, size:16 };
+  t1.alignment = { horizontal:'center', vertical:'middle' };
+
+  ws.mergeCells(span(2));
+  const t2 = ws.getCell('A2');
+  t2.value = M.toUpperCase() + ' ' + Y + ' ATTENDANCE SHEET';
+  t2.font = { bold:true, size:14 };
+  t2.alignment = { horizontal:'center', vertical:'middle' };
+
+  ws.mergeCells(span(3));
+  const t3 = ws.getCell('A3');
+  t3.value = cls.name + (cls.grade ? '  \u00b7  Grade ' + cls.grade : '')
+    + (cls.subject ? '  \u00b7  ' + cls.subject : '')
+    + (SCOPE.area && SCOPE.area !== 'jurisdiction' && SCOPE.area !== 'all'
+        ? '  \u00b7  ' + areaName(SCOPE.area) + ' area' : '');
+  t3.font = { size:11, italic:true };
+  t3.alignment = { horizontal:'center' };
+
+  const headRow = 5;
+  const thin = { style:'thin' };
+  const border = { top:thin, left:thin, bottom:thin, right:thin };
+  const head = (col, text) => {
+    const c = ws.getCell(colLetter(col) + headRow);
+    c.value = text;
+    c.font = { bold:true, size:11 };
+    c.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE8EFEA' } };
+    c.border = border;
+  };
+  head(1, 'Student Name');
+  dates.forEach((x,i) => head(2+i, dayLabel(x.held_on)));
+  head(lastCol, 'Total');
+
+  roll.forEach((st,i) => {
+    const r = headRow + 1 + i;
+    const nameCell = ws.getCell('A' + r);
+    nameCell.value = st.full_name;
+    nameCell.font = { size:11 };
+    nameCell.border = border;
+    let total = 0;
+    dates.forEach((x,j) => {
+      const m = d.attendance.find(a => a.session_id === x.id && a.ace_student_id === st.id);
+      const on = !!(m && m.present);
+      if (on) total++;
+      const c = ws.getCell(colLetter(2+j) + r);
+      c.value = on ? '\u2713' : '\u2014';
+      c.alignment = { horizontal:'center' };
+      c.font = { size:12, bold:on, color:{ argb: on ? 'FF15704F' : 'FF9AA5A1' } };
+      c.border = border;
+    });
+    const tot = ws.getCell(colLetter(lastCol) + r);
+    tot.value = total;
+    tot.font = { bold:true, size:11 };
+    tot.alignment = { horizontal:'center' };
+    tot.border = border;
+  });
+
+  const legendRow = headRow + roll.length + 2;
+  ws.mergeCells('A' + legendRow + ':' + colLetter(lastCol) + legendRow);
+  const lg = ws.getCell('A' + legendRow);
+  lg.value = '\u2713 = Present        \u2014 = Not attended';
+  lg.font = { size:11 };
+
+  ws.getColumn(1).width = 26;
+  for (let i = 2; i < lastCol; i++) ws.getColumn(i).width = 11;
+  ws.getColumn(lastCol).width = 9;
+  ws.getRow(headRow).height = 28;
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    'Remedial_Classes_' + M + '_' + Y + '_Attendance.xlsx');
+  toast('Attendance sheet downloaded');
 }
 
 /* ---------- teacher training ---------- */
@@ -1557,22 +1876,31 @@ async function editAceTeacher(id){
     });
 }
 
-async function editAceClass(id){
-  const c = id ? (await db.list('ace_classes')).find(x => x.id === id) : { status:'running' };
+async function editAceClass(id, grade, subject){
+  const c = id ? (await db.list('ace_classes')).find(x => x.id === id)
+               : { status:'running', grade:grade || '', subject:subject || '',
+                   name:(grade && subject) ? ('Grade ' + grade + ' \u00b7 ' + subject) : '' };
   const teachers = await sList('ace_teachers');
   openModal(id ? 'Edit class' : 'Add class',
-    '<div class="grid g2">' + fld('k-name','Class name', c.name)
-    + sel('k-teacher','Teacher', [['','\u2014 not set \u2014']].concat(teachers.map(t => [t.id, t.full_name])), c.teacher_id) + '</div>'
-    + '<div class="grid g3">' + fld('k-venue','Venue', c.venue) + fld('k-level','Level / grade', c.level)
-    + fld('k-started','Started on', c.started_on, 'date') + '</div>'
-    + '<div class="grid g3">' + fld('k-days','Days', c.days) + fld('k-timing','Timing', c.timing)
+    '<div class="grid g3">'
+    + sel('k-grade','Grade', [['','\u2014 choose \u2014']].concat(ACE_GRADES.map(g => [g, 'Grade ' + g])), c.grade)
+    + sel('k-subject','Subject', [['','\u2014 choose \u2014']].concat(ACE_SUBJECTS.map(x => [x, x])), c.subject)
+    + sel('k-teacher','Teacher', [['','\u2014 not set \u2014']].concat(teachers.map(t => [t.id, t.full_name])), c.teacher_id)
+    + '</div>'
+    + '<div class="grid g2">' + fld('k-name','Class name', c.name)
+    + fld('k-venue','Venue', c.venue) + '</div>'
+    + '<div class="grid g2">' + fld('k-started','Started on', c.started_on, 'date')
     + sel('k-status','Status', [['running','Running'],['paused','Paused'],['closed','Closed']], c.status) + '</div>'
+    + '<div class="grid g2">' + fld('k-days','Days', c.days) + fld('k-timing','Timing', c.timing) + '</div>'
     + fld('k-drive','Pictures folder (Drive link)', c.drive_url)
     + fld('k-notes','Notes', c.notes, 'textarea'),
     async () => {
-      if (!mv('k-name')){ toast('A class name is required'); return; }
+      if (!mv('k-name') && mv('k-grade') && mv('k-subject'))
+        $('k-name').value = 'Grade ' + mv('k-grade') + ' \u00b7 ' + mv('k-subject');
+      if (!mv('k-name')){ toast('Give the class a name, or pick a grade and subject'); return; }
       const row = { name:mv('k-name'), teacher_id:mv('k-teacher') || null, venue:mv('k-venue'),
-        level:mv('k-level'), started_on:mv('k-started') || null, days:mv('k-days'),
+        grade:mv('k-grade') || null, subject:mv('k-subject') || null,
+        started_on:mv('k-started') || null, days:mv('k-days'),
         timing:mv('k-timing'), status:mv('k-status'), drive_url:mv('k-drive'), notes:mv('k-notes') };
       id ? await db.update('ace_classes', id, row) : await db.insert('ace_classes', stampArea(row));
       closeModal(); toast('Saved'); render();
@@ -1829,6 +2157,7 @@ function paletteItems(){
     issues && { label:'Issue a directive',           group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
     { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
     juris && { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
+    { label:'Download the attendance sheet', group:'ACE Classes', run:() => enterWorkspace('ace','register') },
     { label:'Take an ACE register',          group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='register'; render(); }, 60); } },
     { label:'ACE baseline scores',           group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='assess'; render(); }, 60); } },
     { label:'Add an ACE teacher',            group:'ACE Classes', run:() => { go('ace'); setTimeout(editAceTeacher, 60); } },
@@ -1996,6 +2325,36 @@ const PAGES = [
 ];
 let page = 'dash';
 let scopeBanner = '';
+
+/* A portfolio opens as its own workspace: its own menu, its own dashboard,
+   and none of the general board screens. Other portfolios will get the same
+   treatment as their requirements are settled. */
+let workspace = 'board';
+const WORKSPACES = {
+  ace: {
+    portfolio:'ace',
+    title:'ACE Classes',
+    nav:[['overview','Dashboard'],['classes','Classes & students'],['register','Attendance'],
+         ['training','Teacher training'],['assess','Baseline'],['money','Salary & transport']]
+  }
+};
+const ACE_GRADES = ['6','7','8'];
+const ACE_SUBJECTS = ['Maths','Science','English'];
+
+function enterWorkspace(key, tab){
+  workspace = key;
+  page = 'ace';
+  if (tab) aceState.tab = tab;
+  const w = WORKSPACES[key];
+  if (w && w.portfolio && !lockedToPortfolio()) SCOPE.portfolio = w.portfolio;
+  drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
+}
+function leaveWorkspace(){
+  workspace = 'board';
+  page = 'dash';
+  drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
+}
+function aceGo(tab){ aceState.tab = tab; drawNav(); render(); window.scrollTo(0,0); toggleSide(false); }
 const counts = {};
 
 function drawScopeBar(){
@@ -2073,13 +2432,29 @@ function pageAllowed(id){
 }
 
 function drawNav(){
+  if (workspace !== 'board'){ drawWorkspaceNav(); return; }
   const label = p => (p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label;
   $('nav').innerHTML = PAGES.filter(p => pageAllowed(p.id)).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
     + '<span>' + label(p) + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
 }
+function drawWorkspaceNav(){
+  const w = WORKSPACES[workspace];
+  $('nav').innerHTML =
+    '<a class="back" onclick="leaveWorkspace()"><span>&larr; Back to the board</span></a>'
+    + '<div class="nav-head">' + esc(w.title) + '</div>'
+    + w.nav.filter(n => n[0] !== 'money' || canPortfolioMoney(w.portfolio))
+        .map(n => '<a class="' + (aceState.tab === n[0] ? 'on' : '') + '" '
+          + 'onclick="aceGo(\'' + n[0] + '\')"><span>' + n[1] + '</span></a>').join('');
+}
+
 function go(id){
+  if (id === 'ace'){
+    if (!pageAllowed('ace')){ toast('That is outside what your posting covers'); return; }
+    enterWorkspace('ace'); return;
+  }
+  if (workspace !== 'board' && id !== 'ace') workspace = 'board';
   if (!pageAllowed(id)){
     toast('That is outside what your posting covers');
     id = 'dash';
