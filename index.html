@@ -285,6 +285,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 .home-sub h3{margin:0 0 4px;font-size:15px}
 .pill-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
+.home-sec{margin-bottom:30px}
+.home-sec > h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 2px;font-weight:600}
+.home-sec > .mini{margin:0 0 14px}
+.home-grid.areas{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.wcard.area .wc-title{font-size:20px}
+.wcard.admin{background:var(--subtle)}
+.subtabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-6px 0 22px;flex-wrap:wrap}
+.subtabs button{background:none;border:none;padding:10px 16px;font-size:14.5px;color:var(--text-2);
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
+  transition:color var(--t) var(--ease),border-color var(--t) var(--ease)}
+.subtabs button:hover{color:var(--text)}
+.subtabs button.on{color:var(--text);font-weight:500;border-bottom-color:var(--accent)}
+
 .acegrid td{vertical-align:top}
 .acegrid td b{font-size:15px}
 .acegrid tbody tr:hover{background:var(--subtle)}
@@ -576,7 +590,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v6.6';
+const APP_VERSION = 'v7.4';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -673,11 +687,9 @@ const DEFAULT_AREAS = [
   { id:'clifton',  name:'Clifton',  sort:3 }, { id:'laasi',   name:'Laasi',   sort:4 }
 ];
 const DEFAULT_PORTFOLIOS = [
-  { id:'english',    name:'English Language',   sort:1 },
-  { id:'ace',        name:'ACE Classes',        sort:2 },
-  { id:'university', name:'University Matters', sort:3 },
-  { id:'library',    name:'Library',            sort:4 },
-  { id:'parwaz',     name:'Parwaz',             sort:5 }
+  { id:'ace',      name:'ACE Classes',            sort:1 },
+  { id:'afghan',   name:'Afghan Matters',         sort:2 },
+  { id:'national', name:'National Reimbursement', sort:3 }
 ];
 const ORG = { areas:DEFAULT_AREAS.slice(), portfolios:DEFAULT_PORTFOLIOS.slice() };
 const areaName = id => id ? ((ORG.areas.find(a => a.id === id) || {}).name || id) : 'Jurisdiction';
@@ -772,6 +784,25 @@ function stampArea(row){
   const a = SCOPE.area;
   return Object.assign({ area_id: (a === 'jurisdiction' || a === 'all') ? null : a }, row);
 }
+/* ACE work is filed against the area running the class, wherever it is entered from. */
+function aceClassArea(classId){
+  const d = aceState.data;
+  const c = d && d.classes.find(x => x.id === classId);
+  return c && c.area_id ? c.area_id : null;
+}
+function stampAceArea(row, classId){
+  const a = aceClassArea(classId);
+  return a ? Object.assign({}, row, { area_id:a }) : stampArea(row);
+}
+/* When the portfolio adds a teacher or class while looking at all areas,
+   it has to say which area runs it. */
+function aceNeedsArea(){ return SCOPE.area === 'all' || SCOPE.area === 'jurisdiction'; }
+function aceAreaField(id, current){
+  if (!aceNeedsArea()) return '';
+  return sel(id, 'Area that runs it',
+    [['','\u2014 choose \u2014']].concat(AREA_ORDER.filter(a => ORG.areas.some(o => o.id === a))
+      .map(a => [a, areaName(a)])), current || '');
+}
 function defaultPortfolio(){
   if (lockedToPortfolio()) return ME.portfolio_id;
   return SCOPE.portfolio === 'all' ? '' : SCOPE.portfolio;
@@ -780,7 +811,7 @@ function portfolioOptions(){
   const list = lockedToPortfolio()
     ? ORG.portfolios.filter(p => p.id === ME.portfolio_id)
     : ORG.portfolios;
-  return [['','General board work']].concat(list.map(p => [p.id, p.name]));
+  return [['','Area activity only (no portfolio)']].concat(list.map(p => [p.id, p.name + ' \u2014 also shows on its dashboard']));
 }
 const STORE_KEY = 'leb-kharadar';
 const mem = {};
@@ -1139,7 +1170,8 @@ async function pageAreas(v){
 const aceState = { tab:'overview', classId:null, month:new Date().getMonth()+1, year:new Date().getFullYear() };
 const ACE_TABS = [['overview','Overview'],['classes','Classes & students'],
                   ['register','Attendance'],['training','Teacher training'],
-                  ['assess','Baseline'],['money','Salary & transport']];
+                  ['assess','Baseline'],['money','Salary & transport'],
+                  ['activities','Activities from areas']];
 
 const pct = (a,b) => b ? Math.round(a / b * 100) : 0;
 
@@ -1174,15 +1206,25 @@ async function pageAce(v){
   }
   aceState.data = d;
 
-  const tabName = (ACE_TABS.find(t => t[0] === aceState.tab) || ['','Dashboard'])[1];
+  const inArea = workspace === 'area';
+  // an area takes the classes; the monitoring view of other areas is the portfolio's
+  const tabs = ACE_TABS.filter(t => !(inArea && t[0] === 'activities'));
+  if (!tabs.some(t => t[0] === aceState.tab)) aceState.tab = 'overview';
+  const tabName = (tabs.find(t => t[0] === aceState.tab) || ['','Dashboard'])[1];
+
+  const where = inArea ? areaName(SCOPE.area) + ' area'
+    : (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction' ? 'All areas' : areaName(SCOPE.area) + ' area');
   let h = head('ACE Classes \u00b7 ' + tabName,
-    aceBlurb(aceState.tab), aceTabActions());
-  if (workspace !== 'ace')
-    h += '<div class="panel"><div class="body flush"><div class="tabs">'
-      + ACE_TABS.map(t => '<button class="' + (aceState.tab === t[0] ? 'on' : '') + '" '
+    inArea ? 'The ACE classes ' + esc(areaName(SCOPE.area)) + ' runs. The ACE portfolio monitors these from its own dashboard.'
+           : 'Monitoring ACE classes across the areas. ' + aceBlurb(aceState.tab),
+    (inArea ? '' : aceAreaPicker()) + aceTabActions());
+  if (inArea)
+    h += '<div class="subtabs">'
+      + tabs.map(t => '<button class="' + (aceState.tab === t[0] ? 'on' : '') + '" '
           + 'onclick="aceState.tab=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
-      + '</div></div></div>';
-  h += scopeBanner;
+      + '</div>';
+  else if (aceState.tab === 'overview')
+    h += aceByArea(d);
 
   h += '<div id="ace-body">';
   if (aceState.tab === 'overview')  h += aceOverview(d);
@@ -1191,8 +1233,79 @@ async function pageAce(v){
   if (aceState.tab === 'training')  h += aceTraining(d);
   if (aceState.tab === 'assess')    h += aceAssess(d);
   if (aceState.tab === 'money')     h += await aceMoney(d);
+  if (aceState.tab === 'activities') h += await portfolioActivities('ace');
   h += '</div>';
   v.innerHTML = h;
+}
+
+
+/* ---------- the portfolio's monitoring view ----------
+   The ACE portfolio looks across every area. It can narrow to one. */
+function aceAreaPicker(){
+  if (!(LOCAL || isParentBody() || roleTakesPortfolio(ME.role))) return '';
+  const cur = (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction') ? 'all' : SCOPE.area;
+  return '<select style="width:170px" onchange="SCOPE.area=this.value;render()">'
+    + '<option value="all"' + (cur === 'all' ? ' selected' : '') + '>All areas</option>'
+    + AREA_ORDER.filter(id => ORG.areas.some(a => a.id === id))
+        .map(id => '<option value="' + id + '"' + (cur === id ? ' selected' : '') + '>'
+          + esc(areaName(id)) + '</option>').join('')
+    + '</select>';
+}
+
+/* Area by area: what each one is running, and how well. */
+function aceByArea(d){
+  if (SCOPE.area !== 'all' && SCOPE.area !== 'jurisdiction') return '';
+  const m = new Date().getMonth()+1, y = new Date().getFullYear();
+  const key = y + '-' + String(m).padStart(2,'0');
+  const rows = AREA_ORDER.filter(id => ORG.areas.some(a => a.id === id)).map(id => {
+    const classes  = d.classes.filter(c => c.area_id === id);
+    const cids     = classes.map(c => c.id);
+    const roll     = d.students.filter(s => cids.indexOf(s.class_id) >= 0 && s.status !== 'left');
+    const sessions = d.sessions.filter(s => cids.indexOf(s.class_id) >= 0);
+    const month    = sessions.filter(s => (s.held_on || '').slice(0,7) === key);
+    const sids     = sessions.map(s => s.id);
+    const att      = d.attendance.filter(a => sids.indexOf(a.session_id) >= 0);
+    const teachers = d.teachers.filter(t => t.area_id === id && t.status === 'active');
+    const trained  = new Set(d.tAtt.filter(a => a.attended
+                       && teachers.some(t => t.id === a.teacher_id)).map(a => a.teacher_id));
+    const scored   = d.assessments.filter(a => a.kind === 'baseline' && a.score !== null
+                       && a.score !== undefined && roll.some(r => r.id === a.ace_student_id));
+    return { id, classes:classes.length, students:roll.length, month:month.length,
+      attendance: att.length ? pct(att.filter(a => a.present).length, att.length) : null,
+      teachers:teachers.length, trained:trained.size,
+      baseline: scored.length ? scored.reduce((t,a) => t + num(a.score), 0) / scored.length : null,
+      assessed:scored.length };
+  });
+
+  const flag = r => {
+    if (!r.classes) return '<span class="tag t-grey">Not started</span>';
+    if (!r.month) return '<span class="tag t-gold">No register this month</span>';
+    if (r.attendance !== null && r.attendance < 60) return '<span class="tag t-red">Low attendance</span>';
+    if (r.teachers && r.trained < r.teachers) return '<span class="tag t-gold">Training due</span>';
+    return '<span class="tag t-green">On track</span>';
+  };
+
+  return '<div class="panel"><h2>Area by area<span class="mini">' + MONTHS[m-1] + ' ' + y + '</span></h2>'
+    + '<div class="body flush"><div class="scroll"><table class="ledger">'
+    + '<thead><tr><th>Area</th><th class="num">Classes</th><th class="num">Students</th>'
+    + '<th class="num">Sittings this month</th><th class="num">Attendance</th>'
+    + '<th class="num">Teachers trained</th><th class="num">Avg baseline</th><th>Status</th><th></th></tr></thead><tbody>'
+    + rows.map(r => '<tr><td><b>' + esc(areaName(r.id)) + '</b></td>'
+      + '<td class="num">' + (r.classes || '\u2014') + '</td>'
+      + '<td class="num">' + (r.students || '\u2014') + '</td>'
+      + '<td class="num">' + (r.month || '\u2014') + '</td>'
+      + '<td class="num">' + (r.attendance === null ? '\u2014' : r.attendance + '%') + '</td>'
+      + '<td class="num">' + (r.teachers ? r.trained + ' of ' + r.teachers : '\u2014') + '</td>'
+      + '<td class="num">' + (r.baseline === null ? '\u2014' : r.baseline.toFixed(1) + '/30') + '</td>'
+      + '<td>' + flag(r) + '</td>'
+      + '<td style="width:1%"><button class="btn sm ghost" onclick="SCOPE.area=\'' + r.id + '\';render()">Look closer</button></td></tr>').join('')
+    + '</tbody><tfoot><tr><td>All areas</td>'
+    + '<td class="num">' + rows.reduce((t,r) => t + r.classes, 0) + '</td>'
+    + '<td class="num">' + rows.reduce((t,r) => t + r.students, 0) + '</td>'
+    + '<td class="num">' + rows.reduce((t,r) => t + r.month, 0) + '</td>'
+    + '<td></td><td class="num">' + rows.reduce((t,r) => t + r.trained, 0) + ' of '
+      + rows.reduce((t,r) => t + r.teachers, 0) + '</td><td></td><td></td><td></td></tr></tfoot>'
+    + '</table></div></div></div>';
 }
 
 function aceBlurb(tab){
@@ -1674,11 +1787,11 @@ async function addAceDate(){
       const day = mv('nd-date');
       if (!day){ toast('Pick a date'); return; }
       try{
-        const saved = await db.insert('ace_sessions', stampArea({
+        const saved = await db.insert('ace_sessions', stampAceArea({
           class_id:cls.id, held_on:day, topic:mv('nd-topic'),
           teacher_present:$('nd-teacher').checked, drive_url:mv('nd-drive'),
           teacher_id:cls.teacher_id || null
-        }));
+        }, cls.id));
         d.sessions.push(saved);
         aceState.month = parseInt(day.slice(5,7), 10);
         aceState.year  = parseInt(day.slice(0,4), 10);
@@ -1901,7 +2014,9 @@ async function saveBaseline(studentId, field, value){
       await db.update('ace_assessments', existing.id, patch);
       Object.assign(existing, patch);
     } else {
-      const row = stampArea(Object.assign({ ace_student_id:studentId, kind:'baseline', max_score:30 }, patch));
+      const stu = d.students.find(x => x.id === studentId);
+      const row = stampAceArea(Object.assign({ ace_student_id:studentId, kind:'baseline', max_score:30 }, patch),
+                               stu && stu.class_id);
       d.assessments.push(await db.insert('ace_assessments', row));
     }
     savingDone(true);
@@ -2003,7 +2118,7 @@ async function payAceSalary(){
     async () => {
       if (!num(mv('as-amount'))){ toast('Enter an amount'); return; }
       const t = active.find(x => x.id === mv('as-teacher'));
-      await db.insert('disbursements', stampArea({
+      await db.insert('disbursements', Object.assign(stampArea({}), t && t.area_id ? { area_id:t.area_id } : {}, {
         paid_on:mv('as-date') || todayISO(), amount:num(mv('as-amount')),
         category:'teacher_salary', portfolio_id:'ace', teacher_id:t ? t.id : null,
         paid_to:t ? t.full_name : '', student_name:t ? t.full_name : '',
@@ -2029,7 +2144,8 @@ async function payAceTransport(){
     + fld('at-notes','Notes', '', 'textarea'),
     async () => {
       if (!num(mv('at-amount'))){ toast('Enter an amount'); return; }
-      await db.insert('disbursements', stampArea({
+      const tcls = mv('at-class') ? d.classes.find(c => c.id === mv('at-class')) : null;
+      await db.insert('disbursements', Object.assign(stampArea({}), tcls && tcls.area_id ? { area_id:tcls.area_id } : {}, {
         paid_on:mv('at-date') || todayISO(), amount:num(mv('at-amount')),
         category:'transport_misc', portfolio_id:'ace',
         ace_class_id:mv('at-class') || null,
@@ -2069,9 +2185,11 @@ async function editAceTeacher(id){
     + '<div class="grid g2">'
     + sel('t-status','Status', [['active','Active'],['left','Left']], t.status)
     + fld('t-serial','S. No on the register', t.serial_no, 'number') + '</div>'
+    + aceAreaField('t-area', t.area_id)
     + fld('t-notes','Notes', t.notes, 'textarea'),
     async () => {
       if (!mv('t-name')){ toast('A teacher name is required'); return; }
+      if (aceNeedsArea() && !id && !mv('t-area')){ toast('Choose which area this teacher works in'); return; }
       const row = { full_name:mv('t-name'), contact:mv('t-contact'), qualification:mv('t-qual'),
         subject:mv('t-subject') || null, teaching_days:mv('t-days'),
         hours_per_week:mv('t-hours') ? num(mv('t-hours')) : null,
@@ -2084,6 +2202,7 @@ async function editAceTeacher(id){
         row.account_type = mv('t-actype') || null;
         row.account_number = mv('t-acnum');
       }
+      if (aceNeedsArea() && mv('t-area')) row.area_id = mv('t-area');
       id ? await db.update('ace_teachers', id, row) : await db.insert('ace_teachers', stampArea(row));
       closeModal(); toast('Saved'); render();
     });
@@ -2105,16 +2224,19 @@ async function editAceClass(id, grade, subject){
     + '<div class="grid g2">' + fld('k-started','Started on', c.started_on, 'date')
     + sel('k-status','Status', [['running','Running'],['paused','Paused'],['closed','Closed']], c.status) + '</div>'
     + '<div class="grid g2">' + fld('k-days','Days', c.days) + fld('k-timing','Timing', c.timing) + '</div>'
+    + aceAreaField('k-area', c.area_id)
     + fld('k-drive','Pictures folder (Drive link)', c.drive_url)
     + fld('k-notes','Notes', c.notes, 'textarea'),
     async () => {
       if (!mv('k-name') && mv('k-grade') && mv('k-subject'))
         $('k-name').value = 'Grade ' + mv('k-grade') + ' \u00b7 ' + mv('k-subject');
       if (!mv('k-name')){ toast('Give the class a name, or pick a grade and subject'); return; }
+      if (aceNeedsArea() && !id && !mv('k-area')){ toast('Choose which area runs this class'); return; }
       const row = { name:mv('k-name'), teacher_id:mv('k-teacher') || null, venue:mv('k-venue'),
         grade:mv('k-grade') || null, subject:mv('k-subject') || null,
         started_on:mv('k-started') || null, days:mv('k-days'),
         timing:mv('k-timing'), status:mv('k-status'), drive_url:mv('k-drive'), notes:mv('k-notes') };
+      if (aceNeedsArea() && mv('k-area')) row.area_id = mv('k-area');
       id ? await db.update('ace_classes', id, row) : await db.insert('ace_classes', stampArea(row));
       closeModal(); toast('Saved'); render();
     });
@@ -2138,7 +2260,7 @@ async function editAceStudent(id, classId){
       const row = { full_name:mv('e-name'), class_id:mv('e-class') || null, guardian_name:mv('e-guard'),
         contact:mv('e-contact'), grade:mv('e-grade'), school:mv('e-school'),
         enrolled_on:mv('e-enrolled') || null, status:mv('e-status'), notes:mv('e-notes') };
-      id ? await db.update('ace_students', id, row) : await db.insert('ace_students', stampArea(row));
+      id ? await db.update('ace_students', id, row) : await db.insert('ace_students', stampAceArea(row, row.class_id));
       closeModal(); toast('Saved'); render();
     });
 }
@@ -2194,7 +2316,7 @@ async function editAceSession(id){
       let sessionId = id;
       try{
         if (id) await db.update('ace_sessions', id, row);
-        else sessionId = (await db.insert('ace_sessions', stampArea(row))).id;
+        else sessionId = (await db.insert('ace_sessions', stampAceArea(row, row.class_id))).id;
       }catch(err){
         toast(/duplicate|unique/i.test(err.message || '')
           ? 'A register already exists for that class on that date'
@@ -2324,7 +2446,7 @@ async function pageAfghan(v){
   engState.data = d.eng;
   const tab = afgState.tab;
   const names = { overview:'Dashboard', register:'Student register', english:'English classes',
-                  school:'School data', claims:'Reimbursement' };
+                  school:'School data', claims:'Reimbursement', activities:'Activities from areas' };
   let h = head('Afghan Matters \u00b7 ' + (names[tab] || ''),
     'Kharadar and Clifton. Student register, English classes, school data, '
     + 'and what is claimed back from national.', afgActions());
@@ -2335,6 +2457,7 @@ async function pageAfghan(v){
   if (tab === 'english')  h += afgEnglish(d);
   if (tab === 'school')   h += afgSchool(d);
   if (tab === 'claims')   h += afgClaims(d);
+  if (tab === 'activities') h += await portfolioActivities('afghan');
   h += '</div>';
   v.innerHTML = h;
 }
@@ -3149,10 +3272,9 @@ async function exportEngRoll(){
    The front door: choose what you are working on.
    ===================================================================== */
 async function pageHome(v){
-  const open = WORKSPACE_ORDER.filter(workspaceAllowed);
-  const others = ORG.portfolios.filter(p =>
-    ['ace','afghan','national'].indexOf(p.id) < 0
-    && (LOCAL || isParentBody() || ME.portfolio_id === p.id));
+  const ports = PORTFOLIO_ORDER.filter(workspaceAllowed);
+  const areas = AREA_ORDER.filter(id => ORG.areas.some(a => a.id === id) && areaAllowed(id));
+  const people = workspaceAllowed('members');
 
   let h = '<div class="home-head">'
     + '<h1>' + esc(JURISDICTION_NAME) + '</h1>'
@@ -3162,23 +3284,40 @@ async function pageHome(v){
           + (ME.portfolio_id ? ' \u00b7 ' + esc(portName(ME.portfolio_id)) : ''))
     + '</p></div>';
 
-  h += '<div class="home-grid">'
-    + open.map(k => {
-        const w = WORKSPACES[k];
-        return '<button class="wcard' + (w.board ? ' board' : '') + '" onclick="enterWorkspace(\'' + k + '\')">'
-          + '<span class="wc-title">' + esc(w.title) + '</span>'
-          + '<span class="wc-blurb">' + esc(w.blurb) + '</span>'
-          + (w.areas ? '<span class="wc-tag">' + w.areas.map(a => esc(areaName(a))).join(' &amp; ') + '</span>' : '')
-          + '<span class="wc-go">Open &rarr;</span></button>';
-      }).join('')
-    + '</div>';
+  if (ports.length)
+    h += '<section class="home-sec"><h2>Portfolios</h2>'
+      + '<p class="mini">Run at jurisdiction level, across every area.</p>'
+      + '<div class="home-grid">'
+      + ports.map(k => {
+          const w = WORKSPACES[k];
+          return '<button class="wcard" onclick="enterWorkspace(\'' + k + '\')">'
+            + '<span class="wc-title">' + esc(w.title) + '</span>'
+            + '<span class="wc-blurb">' + esc(w.blurb) + '</span>'
+            + (w.areas ? '<span class="wc-tag">' + w.areas.map(a => esc(areaName(a))).join(' &amp; ') + '</span>' : '')
+            + '<span class="wc-go">Open &rarr;</span></button>';
+        }).join('')
+      + '</div></section>';
 
-  if (others.length)
-    h += '<div class="home-sub"><h3>Not set up yet</h3>'
-      + '<p class="mini">These portfolios exist on the board but have no dashboard of their own. '
-      + 'Send me what each one records and I will build it.</p>'
-      + '<div class="pill-row">' + others.map(p => '<span class="tag t-grey">' + esc(p.name) + '</span>').join('')
-      + '</div></div>';
+  if (areas.length)
+    h += '<section class="home-sec"><h2>Areas</h2>'
+      + '<p class="mini">Each area runs its own board. Activities tagged with a portfolio also appear on that portfolio\u2019s dashboard.</p>'
+      + '<div class="home-grid areas">'
+      + areas.map(id => '<button class="wcard area" onclick="enterArea(\'' + id + '\')">'
+          + '<span class="wc-title">' + esc(areaName(id)) + '</span>'
+          + '<span class="wc-blurb">Jamati member cases, fees matters, ACE classes, activities, '
+          + 'permission programmes and quarter reports.</span>'
+          + '<span class="wc-go">Open &rarr;</span></button>').join('')
+      + '</div></section>';
+
+  if (people)
+    h += '<section class="home-sec"><h2>Administration</h2><div class="home-grid">'
+      + '<button class="wcard admin" onclick="enterWorkspace(\'members\')">'
+      + '<span class="wc-title">Board members</span>'
+      + '<span class="wc-blurb">Approve new sign-ups and set each person\u2019s posting.</span>'
+      + '<span class="wc-go">Open &rarr;</span></button></div></section>';
+
+  if (!ports.length && !areas.length && !people)
+    h += '<div class="note">Your posting does not reach any dashboard yet. Ask the chairperson to confirm it.</div>';
 
   v.innerHTML = h;
 }
@@ -3216,15 +3355,17 @@ async function pageNational(v){
   }
   natState.data = claims;
   const names = { overview:'Dashboard', transport:CLAIM_KINDS.transport,
-                  tuition:CLAIM_KINDS.tuition, qsp:CLAIM_KINDS.qsp };
+                  tuition:CLAIM_KINDS.tuition, qsp:CLAIM_KINDS.qsp, activities:'Activities from areas' };
   let h = head('National Reimbursement \u00b7 ' + (names[natState.tab] || ''),
     'What the board has spent and is claiming back from national.',
-    natState.tab === 'overview' ? '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
+    natState.tab === 'activities' ? ''
+    : natState.tab === 'overview' ? '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
       : '<button class="btn ghost" onclick="exportClaims()">Export</button>'
         + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
         + '<button class="btn" onclick="editClaim(null,\'' + natState.tab + '\')">Add a claim</button>');
   h += scopeBanner;
   if (natState.tab === 'overview') h += natOverview(claims);
+  else if (natState.tab === 'activities') h += await portfolioActivities('national');
   else h += natList(claims, natState.tab);
   v.innerHTML = h;
 }
@@ -3419,6 +3560,93 @@ async function natData(){
   return natState.data;
 }
 
+
+/* =====================================================================
+   Fees matters — each area runs fees its own way. Kharadar's three
+   monthly sheets are set up; the others are added as their formats come.
+   ===================================================================== */
+const feeMatters = { sub:'sheets' };
+const FEE_SHEET_AREAS = ['kharadar'];
+
+async function pageFeesMatters(v){
+  const tabs = [['sheets','Fee sheets'],['students','Student register']]
+    .concat(canFinance() ? [['funds','Funds & donors']] : []);
+  if (!tabs.some(t => t[0] === feeMatters.sub)) feeMatters.sub = 'sheets';
+
+  v.innerHTML = '<div class="subtabs">'
+    + tabs.map(t => '<button class="' + (feeMatters.sub === t[0] ? 'on' : '') + '" '
+        + 'onclick="feeMatters.sub=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
+    + '</div><div id="fm-body"></div>';
+  const body = $('fm-body');
+
+  if (feeMatters.sub === 'sheets'){
+    if (FEE_SHEET_AREAS.indexOf(SCOPE.area) < 0){
+      body.innerHTML = head('Fee sheets', '')
+        + '<div class="panel"><div class="empty">'
+        + '<p><b>' + esc(areaName(SCOPE.area)) + ' has no fee sheets set up yet.</b></p>'
+        + '<p class="mini">Each area runs its fees its own way. Kharadar\u2019s three monthly sheets are '
+        + 'built; send the sheet ' + esc(areaName(SCOPE.area)) + ' uses and it will be added in the same form.</p>'
+        + '</div></div>';
+      return;
+    }
+    await pageFees(body);
+  }
+  if (feeMatters.sub === 'students') await pageStudents(body);
+  if (feeMatters.sub === 'funds')    await pageFunds(body);
+}
+
+/* =====================================================================
+   Activities from areas — an area activity tagged with a portfolio shows
+   up here, on that portfolio's own dashboard.
+   ===================================================================== */
+async function portfolioActivities(pid){
+  const [progs, prfs] = await Promise.all([
+    db.list('programs').catch(() => []),
+    db.list('prf_requests').catch(() => [])
+  ]);
+  const rows = progs.filter(p => p.portfolio_id === pid)
+    .sort((a,b) => (b.start_date || '').localeCompare(a.start_date || ''));
+  const byArea = {};
+  rows.forEach(p => { const k = p.area_id || 'jurisdiction'; byArea[k] = (byArea[k] || 0) + 1; });
+
+  let h = '<div class="note">When an area records an activity and tags it <b>' + esc(portName(pid))
+    + '</b>, it appears here. Nothing needs to be entered twice.</div>';
+
+  if (!rows.length)
+    return h + '<div class="panel"><div class="empty"><p>No area has tagged an activity to this portfolio yet.</p>'
+      + '<p class="mini">In an area board, open <b>Activities</b>, add or edit one, and choose '
+      + esc(portName(pid)) + ' as its portfolio.</p></div></div>';
+
+  h += '<div class="stats">'
+    + '<div><div class="k">Activities</div><div class="v">' + rows.length + '</div></div>'
+    + '<div><div class="k">Running or planned</div><div class="v">'
+      + rows.filter(p => ['planned','prf_pending','approved','ongoing'].indexOf(p.status) >= 0).length + '</div></div>'
+    + '<div><div class="k">Completed</div><div class="v">' + rows.filter(p => p.status === 'completed').length + '</div></div>'
+    + '<div><div class="k">Areas taking part</div><div class="v">'
+      + Object.keys(byArea).filter(k => k !== 'jurisdiction').length + '</div></div>'
+    + '</div>';
+
+  h += '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-pact', 'Search activities\u2026', rows.length + ' activities')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-pact">'
+    + '<thead><tr><th>Activity</th><th>Area</th><th>Type</th><th>Dates</th><th>Venue</th>'
+    + '<th>Permission</th><th>Status</th></tr></thead><tbody>'
+    + rows.map(p => {
+        const prf = prfs.find(r => r.program_id === p.id);
+        return '<tr><td><b>' + esc(p.title) + '</b>'
+          + (p.expected_participants ? '<div class="mini">' + esc(p.expected_participants) + ' participants</div>' : '') + '</td>'
+          + '<td>' + esc(p.area_id ? areaName(p.area_id) : 'Jurisdiction') + '</td>'
+          + '<td>' + esc(p.type || '\u2014') + '</td>'
+          + '<td>' + fmtDate(p.start_date) + (p.end_date ? '<div class="mini">to ' + fmtDate(p.end_date) + '</div>' : '') + '</td>'
+          + '<td>' + esc(p.venue || '\u2014') + '</td>'
+          + '<td>' + (prf ? statusTag(prf.status) : (p.requires_prf ? '<span class="tag t-gold">Not yet filed</span>'
+                                                                    : '<span class="mini">not needed</span>')) + '</td>'
+          + '<td>' + statusTag(p.status) + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
 /* =====================================================================
    Interface: theme, mobile drawer, command palette, table tools,
    keyboard entry, undo, and a saving indicator.
@@ -3490,43 +3718,39 @@ async function undoDelete(){
 /* ---- command palette ---- */
 let palSel = 0;
 function paletteItems(){
-  const out = PAGES.filter(p => pageAllowed(p.id))
-    .map(p => ({ label:(p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label,
-                 group:'Go to', run:() => go(p.id) }));
-  const money = canFinance(), juris = LOCAL || isParentBody(), issues = canIssueDirectives();
-  return out.concat([
-    money && { label:'Record a receipt from a donor', group:'Funds', run:() => { go('funds'); setTimeout(editDonation, 60); } },
-    money && { label:'Record a payment',              group:'Funds', run:() => { go('funds'); setTimeout(editDisbursement, 60); } },
-    money && { label:'Download the funds ledger',     group:'Funds', run:() => { go('funds'); setTimeout(exportLedger, 60); } },
-    { label:'Log a Tuesday case',            group:'Cases', run:() => { go('cases'); setTimeout(editCase, 60); } },
-    { label:'Send case minutes',             group:'Cases', run:() => go('cases') },
-    { label:'Add a student',                 group:'Register', run:() => { go('students'); setTimeout(editStudent, 60); } },
-    { label:'Import students from Excel',    group:'Register', run:() => { go('students'); setTimeout(() => openImport('students'), 60); } },
-    { label:'Download this month as Excel',  group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && exportWorkbook(), 400); } },
-    { label:'Import rows from Excel',        group:'Fees', run:() => { go('fees'); setTimeout(() => feeState.cycle && openImport('fees'), 400); } },
-    issues && { label:'Issue a directive',           group:'Directives', run:() => { go('directives'); setTimeout(editDirective, 60); } },
-    { label:'See what the board has sent',   group:'Directives', run:() => go('directives') },
-    juris && { label:'Compare all four areas',        group:'Jurisdiction', run:() => go('areas') },
-    { label:'Download the attendance sheet', group:'ACE Classes', run:() => enterWorkspace('ace','register') },
-    { label:'Choose a portfolio',            group:'Go to', run:goHome },
-    { label:'Afghan student register',       group:'Afghan Matters', run:() => enterWorkspace('afghan','register') },
-    { label:'Afghan school data',            group:'Afghan Matters', run:() => enterWorkspace('afghan','school') },
-    { label:'Afghan English classes',        group:'Afghan Matters', run:() => enterWorkspace('afghan','english') },
-    { label:'National reimbursement',        group:'National', run:() => enterWorkspace('national') },
-    { label:'Out of school transportation',  group:'National', run:() => enterWorkspace('national','transport') },
-    { label:'Tuition fees claimed',          group:'National', run:() => enterWorkspace('national','tuition') },
-    { label:'QSP national sheet',            group:'National', run:() => enterWorkspace('national','qsp') },
-    { label:'Take an ACE register',          group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='register'; render(); }, 60); } },
-    { label:'ACE baseline scores',           group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='assess'; render(); }, 60); } },
-    { label:'Add an ACE teacher',            group:'ACE Classes', run:() => { go('ace'); setTimeout(editAceTeacher, 60); } },
-    canPortfolioMoney('ace') && { label:'Record ACE teacher salary', group:'ACE Classes', run:() => { go('ace'); setTimeout(() => { aceState.tab='money'; render(); }, 60); } },
-    { label:'Add a programme',               group:'Programmes', run:() => { go('programs'); setTimeout(editProgram, 60); } },
-    { label:'New permission form',           group:'PRF', run:() => { go('prf'); setTimeout(editPRF, 60); } },
-    { label:'Send the quarterly report',     group:'Report', run:() => { go('report'); setTimeout(() => openShare('report'), 500); } },
-    { label:document.body.classList.contains('dark') ? 'Switch to light theme' : 'Switch to dark theme',
-      group:'View', run:toggleTheme }
-  ].filter(Boolean));
+  const out = [{ label:'Home', group:'Go to', run:goHome }];
+
+  PORTFOLIO_ORDER.filter(workspaceAllowed).forEach(k =>
+    out.push({ label:WORKSPACES[k].title, group:'Portfolio', run:() => enterWorkspace(k) }));
+  AREA_ORDER.filter(id => ORG.areas.some(a => a.id === id) && areaAllowed(id)).forEach(id =>
+    out.push({ label:areaName(id) + ' area', group:'Area', run:() => enterArea(id) }));
+  if (workspaceAllowed('members'))
+    out.push({ label:'Board members', group:'Administration', run:() => enterWorkspace('members') });
+
+  // what you can do from where you are
+  if (workspace === 'area'){
+    const a = areaName(SCOPE.area);
+    PAGES.filter(p => pageAllowed(p.id) && !p.hidden && !p.standalone).forEach(p =>
+      out.push({ label:p.label, group:a, run:() => go(p.id) }));
+    out.push({ label:'Log a Jamati member case', group:a, run:() => { go('cases'); setTimeout(editCase, 80); } });
+    out.push({ label:'Add an activity',          group:a, run:() => { go('programs'); setTimeout(editProgram, 80); } });
+    out.push({ label:'New permission programme', group:a, run:() => { go('prf'); setTimeout(editPRF, 80); } });
+    out.push({ label:'Take an ACE register',     group:a, run:() => { aceState.tab = 'register'; go('ace_area'); } });
+    out.push({ label:'ACE baseline scores',      group:a, run:() => { aceState.tab = 'assess'; go('ace_area'); } });
+    out.push({ label:'Student register',         group:a, run:() => { feeMatters.sub = 'students'; go('fees'); } });
+    if (canFinance())
+      out.push({ label:'Funds & donors',         group:a, run:() => { feeMatters.sub = 'funds'; go('fees'); } });
+  } else if (WORKSPACES[workspace] && WORKSPACES[workspace].nav){
+    const w = WORKSPACES[workspace];
+    w.nav.filter(n => n[0] !== 'money' || canPortfolioMoney(w.portfolio))
+      .forEach(n => out.push({ label:n[1], group:w.title, run:() => wsGo(n[0]) }));
+  }
+
+  out.push({ label:document.body.classList.contains('dark') ? 'Switch to light theme' : 'Switch to dark theme',
+             group:'View', run:toggleTheme });
+  return out;
 }
+
 function openPalette(){
   toggleSide(false);
   palSel = 0;
@@ -3668,21 +3892,19 @@ function animateIn(root){
    Router
    ===================================================================== */
 const PAGES = [
-  { id:'dash',       label:'Overview'        },
-  { id:'areas',      label:'All areas', jurisdictionOnly:true },
-  { id:'directives', label:'Directives'      },
-  { id:'fees',     label:'Fee sheets'        },
-  { id:'funds',    label:'Funds & donors', financeOnly:true },
-  { id:'students', label:'Student register'  },
-  { id:'cases',    label:'Tuesday cases'     },
-  { id:'ace',      label:'ACE Classes'       },
-  { id:'afghan',   label:'Afghan Matters'    },
-  { id:'national', label:'National Reimburse' },
-  { id:'programs', label:'Programmes'        },
-  { id:'prf',      label:'Permission forms'  },
-  { id:'report',   label:'Quarterly report'  },
-  { id:'members',  label:'Board members', peopleOnly:true }
+  { id:'dash',     label:'Dashboard'              },
+  { id:'cases',    label:'Jamati member cases'    },
+  { id:'fees',     label:'Fees matters'           },
+  { id:'ace_area', label:'ACE Classes'            },
+  { id:'programs', label:'Activities'             },
+  { id:'prf',      label:'Permission programmes'  },
+  { id:'report',   label:'Quarter reports'        },
+  { id:'members',  label:'Board members', peopleOnly:true, standalone:true },
+  // reached from inside Fees matters rather than the menu
+  { id:'students', label:'Student register', hidden:true },
+  { id:'funds',    label:'Funds & donors', financeOnly:true, hidden:true }
 ];
+
 let page = 'dash';
 let scopeBanner = '';
 
@@ -3695,17 +3917,15 @@ let workspace = 'home';
    work — fee sheets, cases, funds, programmes — is the Area Board, which
    is a choice on the same screen. */
 const WORKSPACES = {
-  area: {
-    title:'Area Board',
-    blurb:'Fee sheets, Tuesday cases, funds, programmes, permission forms and the quarterly report.',
-    board:true
-  },
+  area: { title:'Area', board:true },
+  members: { title:'Board members', people:true },
   ace: {
     portfolio:'ace',
     title:'ACE Classes',
-    blurb:'Classes and rolls, attendance, teacher training, baseline assessment, salary and transport.',
+    blurb:'Monitors the ACE classes every area runs: attendance, teacher training, baseline and costs, area by area.',
     nav:[['overview','Dashboard'],['classes','Classes & students'],['register','Attendance'],
-         ['training','Teacher training'],['assess','Baseline'],['money','Salary & transport']]
+         ['training','Teacher training'],['assess','Baseline'],['money','Salary & transport'],
+         ['activities','Activities from areas']]
   },
   afghan: {
     portfolio:'afghan',
@@ -3713,45 +3933,68 @@ const WORKSPACES = {
     blurb:'Student register, English classes, school data, and what is reimbursed from national.',
     areas:['kharadar','clifton'],
     nav:[['overview','Dashboard'],['register','Student register'],['english','English classes'],
-         ['school','School data'],['claims','Reimbursement']]
+         ['school','School data'],['claims','Reimbursement'],['activities','Activities from areas']]
   },
   national: {
     portfolio:'national',
     title:'National Reimbursement',
     blurb:'Out of school transportation, tuition fees, and the QSP out of school national sheet.',
     nav:[['overview','Dashboard'],['transport','Out of school transport'],
-         ['tuition','Tuition fees'],['qsp','QSP national sheet']]
+         ['tuition','Tuition fees'],['qsp','QSP national sheet'],['activities','Activities from areas']]
   }
 };
-const WORKSPACE_ORDER = ['area','ace','afghan','national'];
+const PORTFOLIO_ORDER = ['ace','afghan','national'];
+const AREA_ORDER = ['kharadar','clifton','korangi','laasi'];
 
 /* ACE classes run for these grades and subjects. */
 const ACE_GRADES = ['6','7','8'];
 const ACE_SUBJECTS = ['Maths','Science','English'];
 
-/* A portfolio workspace is open to you if your posting reaches it. */
+/* A portfolio dashboard is open to you if your posting reaches it. */
 function workspaceAllowed(key){
   const w = WORKSPACES[key];
   if (!w) return false;
-  if (LOCAL) return true;
+  if (w.people) return !LOCAL && canManagePeople();
   if (w.board) return true;
-  if (isParentBody()) return true;
+  if (LOCAL || isParentBody()) return true;
   if (roleTakesPortfolio(ME.role)) return ME.portfolio_id === w.portfolio;
-  // area people reach a portfolio that runs in their area
+  // ACE is taken inside each area board and only monitored at the portfolio,
+  // so area staff reach it from their own area rather than from here.
+  if (key === 'ace') return false;
+  // a convenor or area member reaches a portfolio that runs in their area
   if (!w.areas) return true;
   return w.areas.indexOf(ME.area_id) >= 0;
 }
+/* An area board is open to the parent body and to that area's own people.
+   Portfolio people work at jurisdiction level and have no area board. */
+function areaAllowed(id){
+  if (LOCAL || isParentBody()) return true;
+  if (roleTakesPortfolio(ME.role)) return false;
+  return ME.area_id === id;
+}
+
+function enterArea(id, tab){
+  if (!areaAllowed(id)){ toast('That area is outside what your posting covers'); return; }
+  workspace = 'area';
+  SCOPE.area = id;
+  if (!lockedToPortfolio()) SCOPE.portfolio = 'all';
+  page = tab || 'dash';
+  feeState.cycle = null;
+  drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
+}
 
 function enterWorkspace(key, tab){
+  if (key === 'area'){ enterArea(ME.area_id || AREA_ORDER[0], tab); return; }
   if (!workspaceAllowed(key)){ toast('That is outside what your posting covers'); return; }
   workspace = key;
   const w = WORKSPACES[key];
-  if (w.board){
-    page = 'dash';
-    if (!lockedToPortfolio()) SCOPE.portfolio = 'all';
+  if (w.people){
+    page = 'members';
   } else {
-    page = { ace:'ace', afghan:'afghan', national:'national' }[key];
+    page = key;
     if (w.portfolio && !lockedToPortfolio()) SCOPE.portfolio = w.portfolio;
+    // a portfolio works across the jurisdiction; area staff see their own area of it
+    SCOPE.area = (LOCAL || isParentBody() || roleTakesPortfolio(ME.role)) ? 'all' : (ME.area_id || 'all');
     if (tab) wsSetTab(key, tab);
   }
   drawNav(); drawScopeBar(); render(); window.scrollTo(0,0); toggleSide(false);
@@ -3797,6 +4040,11 @@ function drawScopeBar(){
   }
   const box = $('scopebar');
   if (!box) return;
+  // Where you are is chosen on the front screen now, so the sidebar
+  // no longer carries its own area and portfolio selectors.
+  box.innerHTML = '';
+  box.style.display = 'none';
+  return;
   let h = '';
 
   if (atJurisdiction()){
@@ -3870,11 +4118,11 @@ function pageAllowed(id){
 function drawNav(){
   if (workspace === 'home'){ $('nav').innerHTML = ''; return; }
   if (workspace !== 'area'){ drawWorkspaceNav(); return; }
-  const label = p => (p.id === 'directives' && !canIssueDirectives()) ? 'From the board' : p.label;
+  const label = p => p.label;
   $('nav').innerHTML =
-    '<a class="back" onclick="goHome()"><span>&larr; All portfolios</span></a>'
-    + '<div class="nav-head">Area Board</div>'
-    + PAGES.filter(p => pageAllowed(p.id) && ['ace','afghan','english','national'].indexOf(p.id) < 0).map(p =>
+    '<a class="back" onclick="goHome()"><span>&larr; Home</span></a>'
+    + '<div class="nav-head">' + esc(areaName(SCOPE.area)) + ' area</div>'
+    + PAGES.filter(p => pageAllowed(p.id) && !p.hidden && !p.standalone).map(p =>
     '<a class="' + (page === p.id ? 'on' : '') + '" onclick="go(\'' + p.id + '\')">'
     + '<span>' + label(p) + '</span>'
     + (counts[p.id] ? '<span class="pill">' + counts[p.id] + '</span>' : '') + '</a>').join('');
@@ -3882,8 +4130,14 @@ function drawNav(){
 function drawWorkspaceNav(){
   const w = WORKSPACES[workspace];
   if (!w || w.board){ workspace = 'area'; drawNav(); return; }
+  if (w.people){
+    $('nav').innerHTML = '<a class="back" onclick="goHome()"><span>&larr; Home</span></a>'
+      + '<div class="nav-head">Administration</div>'
+      + '<a class="on"><span>Board members</span></a>';
+    return;
+  }
   $('nav').innerHTML =
-    '<a class="back" onclick="goHome()"><span>&larr; All portfolios</span></a>'
+    '<a class="back" onclick="goHome()"><span>&larr; Home</span></a>'
     + '<div class="nav-head">' + esc(w.title) + '</div>'
     + w.nav.filter(n => n[0] !== 'money' || canPortfolioMoney(w.portfolio))
         .map(n => '<a class="' + (wsTab() === n[0] ? 'on' : '') + '" '
@@ -3892,9 +4146,14 @@ function drawWorkspaceNav(){
 
 function go(id){
   if (id === 'home'){ goHome(); return; }
-  const asWorkspace = { ace:'ace', afghan:'afghan', national:'national' }[id];
+  const asWorkspace = { ace:'ace', afghan:'afghan', national:'national', members:'members' }[id];
   if (asWorkspace){ enterWorkspace(asWorkspace); return; }
-  if (workspace !== 'area') workspace = 'area';
+  // the register and funds live inside Fees matters
+  if (id === 'students' || id === 'funds'){ feeMatters.sub = id; id = 'fees'; }
+  if (workspace !== 'area'){
+    if (!areaAllowed(SCOPE.area)) SCOPE.area = ME.area_id || AREA_ORDER[0];
+    workspace = 'area';
+  }
   if (!pageAllowed(id)){
     toast('That is outside what your posting covers');
     id = 'dash';
@@ -3911,7 +4170,7 @@ async function render(){
     if (page === 'dash')      await pageDash(v);
     if (page === 'areas')     await pageAreas(v);
     if (page === 'directives')await pageDirectives(v);
-    if (page === 'fees')      await pageFees(v);
+    if (page === 'fees')      await pageFeesMatters(v);
     if (page === 'funds'){
       if (!canFinance()){
         v.innerHTML = '<div class="note warn"><b>Finance is not open to your role.</b><br>'
@@ -3924,6 +4183,7 @@ async function render(){
     if (page === 'students')  await pageStudents(v);
     if (page === 'cases')     await pageCases(v);
     if (page === 'ace')       await pageAce(v);
+    if (page === 'ace_area')  await pageAce(v);
     if (page === 'afghan')    await pageAfghan(v);
     if (page === 'national')  await pageNational(v);
     if (page === 'home')      await pageHome(v);
