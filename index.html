@@ -236,6 +236,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 .stats .k,.fund-stats .k{font-size:13px;color:var(--muted);font-weight:500}
 .stats .v,.fund-stats .v{font-size:27px;margin-top:6px;font-weight:600;letter-spacing:-.03em}
 .fund-stats .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.stats .sub{font-size:12px;color:var(--muted);margin-top:3px}
 .fund-stats > div{border-top:2px solid var(--line)}
 .fund-stats .in{border-top-color:var(--green)}
 .fund-stats .out{border-top-color:var(--gold)}
@@ -590,7 +591,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v7.4';
+const APP_VERSION = 'v8.4';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -674,7 +675,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims','qsp_students','tuition_students','tuition_months'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -689,7 +690,9 @@ const DEFAULT_AREAS = [
 const DEFAULT_PORTFOLIOS = [
   { id:'ace',      name:'ACE Classes',            sort:1 },
   { id:'afghan',   name:'Afghan Matters',         sort:2 },
-  { id:'national', name:'National Reimbursement', sort:3 }
+  { id:'national', name:'National Reimbursement', sort:3 },
+  { id:'qsp',      name:'Out of School (QSP)',    sort:4 },
+  { id:'tuition',  name:'Tuition Fees',           sort:5 }
 ];
 const ORG = { areas:DEFAULT_AREAS.slice(), portfolios:DEFAULT_PORTFOLIOS.slice() };
 const areaName = id => id ? ((ORG.areas.find(a => a.id === id) || {}).name || id) : 'Jurisdiction';
@@ -3647,6 +3650,878 @@ async function portfolioActivities(pid){
   return h;
 }
 
+
+/* =====================================================================
+   Out of School (QSP) — the Quality Schooling Program register.
+   The columns, and their order, follow the board's own BioData sheet.
+   ===================================================================== */
+const QSP_FIELDS = [
+  { k:'serial_no',              h:'Sr.#',                             type:'number', w:7 },
+  { k:'bts_no',                 h:'BTS #',                            w:10 },
+  { k:'local_council',          h:'Local Council',                    w:14 },
+  { k:'jamatkhana',             h:'Jamatkhana',                       w:14 },
+  { k:'area_name',              h:'Area',                             w:13 },
+  { k:'full_name',              h:"Student's Name:*", required:true,  w:26 },
+  { k:'b_form',                 h:'B-Form Number',                    w:19 },
+  { k:'father_name',            h:"Father's Name",                    w:20 },
+  { k:'father_cnic',            h:"Father's CNIC",                    w:19 },
+  { k:'contact',                h:'Contact Number:',                  w:17 },
+  { k:'date_of_birth',          h:'Date of Birth',                    w:14 },
+  { k:'cur_school',             h:"School's Name (Branch's Name, if any)", g:'current', w:24 },
+  { k:'cur_last_class',         h:'Last Class Attended',              g:'current', w:15 },
+  { k:'cur_monthly_fee',        h:'Monthly Schooling fees',           g:'current', w:15 },
+  { k:'cur_swb_assistance',     h:'Current SWB Assistance',           g:'current', w:15 },
+  { k:'cur_family_contribution',h:'Family Contribution',              g:'current', w:15 },
+  { k:'cur_tuition_remedial',   h:'Tution expenses (remedial)',       g:'current', w:15 },
+  { k:'take_in_year',           h:'Take in Year in the program',      g:'current', w:14 },
+  { k:'graduation_year',        h:'Graduation Year from the program', g:'current', w:14 },
+  { k:'new_school',             h:'School Name',                      g:'new', w:24 },
+  { k:'new_category',           h:'School Category',                  g:'new', w:11 },
+  { k:'new_grade',              h:'Grade in 2025-2026',               g:'new', w:12 },
+  { k:'new_monthly_fee',        h:'Monthly School fees',  type:'number', g:'new', w:13 },
+  { k:'new_admission_fee',      h:'Admission Fees',       type:'number', g:'new', w:12 },
+  { k:'new_annual_fee',         h:'Annual Fee',           type:'number', g:'new', w:11 },
+  { k:'new_transport_fee',      h:'Monthly Transport Fee',type:'number', g:'new', w:13 },
+  { k:'new_parent_transport',   h:'Parent Contribution in Transport', type:'number', g:'new', w:14 },
+  { k:'new_tuition_fee',        h:'Continuing Tution fees',type:'number', g:'new', w:13 },
+  { k:'new_books',              h:'Books/Copies/Stationery (if applicable)', type:'number', g:'new', w:14 },
+  { k:'new_uniform',            h:'Uniform (if applicable)', type:'number', g:'new', w:12 },
+  { k:'new_nutrition',          h:'Monthly Nutrition (if applicable)', type:'number', g:'new', w:13 },
+  { k:'total_monthly',          h:'Total Amount (Monthly)', type:'number', g:'new', w:13 },
+  { k:'total_yearly',           h:'Total Amount (Yearly)',  type:'number', g:'new', w:13 },
+  { k:'comments',               h:'Comments',                         w:34 }
+];
+const QSP_MONTHLY = ['new_monthly_fee','new_transport_fee','new_tuition_fee','new_nutrition'];
+const QSP_YEARLY  = ['new_admission_fee','new_annual_fee','new_books','new_uniform'];
+
+/* The board's own arithmetic: the monthly total is the recurring costs,
+   and the yearly total is that twelve times over. Admission, annual fee,
+   books and uniform are one-off, counted separately rather than folded in.
+   A total typed on the sheet is kept; a blank one is worked out. */
+function qspMonthly(r){ return QSP_MONTHLY.reduce((t,k) => t + num(r[k]), 0); }
+function qspYearly(r){ return qspMonthly(r) * 12; }
+function qspOneOff(r){ return QSP_YEARLY.reduce((t,k) => t + num(r[k]), 0); }
+
+async function qspData(){
+  if (!qspState.data) qspState.data = await sList('qsp_students');
+  return qspState.data;
+}
+
+async function pageQsp(v){
+  let rows;
+  try{ rows = await sList('qsp_students'); }
+  catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('Out of School (QSP)','')
+        + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
+        + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  qspState.data = rows;
+  const names = { overview:'Dashboard', register:'Student register',
+                  support:'Support requested', activities:'Activities from areas' };
+  let h = head('Out of School (QSP) \u00b7 ' + (names[qspState.tab] || ''),
+    qspState.tab === 'overview'
+      ? 'Children out of school, the school proposed for each, and the support being requested.'
+      : WORKSPACES.qsp.blurb,
+    qspActions());
+  h += scopeBanner;
+  h += '<div id="qsp-body">';
+  if (qspState.tab === 'overview')   h += qspOverview(rows);
+  if (qspState.tab === 'register')   h += qspRegister(rows);
+  if (qspState.tab === 'support')    h += qspSupport(rows);
+  if (qspState.tab === 'activities') h += await portfolioActivities('qsp');
+  h += '</div>';
+  v.innerHTML = h;
+}
+
+function qspActions(){
+  if (qspState.tab === 'activities' || qspState.tab === 'overview') return '';
+  return '<button class="btn ghost" onclick="openImport(\'qsp_students\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportQsp()">Export</button>'
+    + '<button class="btn send" onclick="openShare(\'qsp_register\')">Send</button>'
+    + '<button class="btn" onclick="editQsp()">Add student</button>';
+}
+
+const qspOrder = list => list.slice().sort((a,b) =>
+  (a.serial_no || 9999) - (b.serial_no || 9999)
+  || (a.created_at || '').localeCompare(b.created_at || '')
+  || a.full_name.localeCompare(b.full_name));
+
+function qspOverview(rows){
+  const live = rows.filter(r => r.status !== 'withdrawn');
+  const outOfSchool = live.filter(r => /out of school/i.test(r.cur_school || '')).length;
+  const newAdm = live.filter(r => /new admission/i.test(r.cur_school || '')).length;
+  const monthly = live.reduce((t,r) => t + (num(r.total_monthly) || qspMonthly(r)), 0);
+  const yearly  = live.reduce((t,r) => t + (num(r.total_yearly) || qspYearly(r)), 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">On the register</div><div class="v">' + live.length + '</div></div>'
+    + '<div><div class="k">Currently out of school</div><div class="v">' + outOfSchool + '</div></div>'
+    + '<div><div class="k">New admissions</div><div class="v">' + newAdm + '</div></div>'
+    + '<div><div class="k">Placed in a school</div><div class="v">'
+      + live.filter(r => r.new_school && !/new admission/i.test(r.new_school)).length + '</div></div>'
+    + '</div>'
+    + '<div class="stats">'
+    + '<div><div class="k">Support per month</div><div class="v">Rs ' + money(monthly) + '</div></div>'
+    + '<div><div class="k">Support per year</div><div class="v">Rs ' + money(yearly) + '</div></div>'
+    + '<div><div class="k">One-off costs</div><div class="v">Rs '
+      + money(live.reduce((t,r) => t + qspOneOff(r), 0)) + '</div>'
+      + '<div class="sub">admission, annual, books, uniform</div></div>'
+    + '<div><div class="k">Awaiting a B-Form</div><div class="v">'
+      + live.filter(r => !r.b_form || /^n\/?a$/i.test(r.b_form)).length + '</div></div>'
+    + '</div>';
+
+  if (!live.length)
+    return h + '<div class="panel"><div class="empty"><p>Nobody on the QSP register yet.</p>'
+      + '<button class="btn" onclick="qspState.tab=\'register\';render()">Open the register</button> '
+      + '<button class="btn ghost" onclick="openImport(\'qsp_students\')">Import the sheet</button></div></div>';
+
+  // by area, as the sheet records it
+  const byArea = {};
+  live.forEach(r => { const k = r.jamatkhana || r.area_name || 'Not recorded'; byArea[k] = (byArea[k] || 0) + 1; });
+  h += '<div class="grid g2"><div class="panel" style="margin:0"><h2>By jamatkhana</h2><div class="body flush">'
+    + '<table class="ledger"><tbody>'
+    + Object.keys(byArea).sort().map(k => '<tr><td>' + esc(k) + '</td>'
+        + '<td class="num">' + byArea[k] + '</td></tr>').join('')
+    + '</tbody></table></div></div>'
+    + '<div class="panel" style="margin:0"><h2>Where the support goes</h2><div class="body flush">'
+    + '<table class="ledger"><tbody>'
+    + [['Monthly school fees','new_monthly_fee'],['Transport','new_transport_fee'],
+       ['Continuing tuition','new_tuition_fee'],['Nutrition','new_nutrition'],
+       ['Admission fees','new_admission_fee'],['Annual fees','new_annual_fee'],
+       ['Books, copies, stationery','new_books'],['Uniform','new_uniform']].map(p => {
+        const t = live.reduce((x,r) => x + num(r[p[1]]), 0);
+        if (!t) return '';
+        return '<tr><td>' + p[0] + '</td><td class="num">Rs ' + money(t) + '</td></tr>';
+      }).join('')
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+/* The register: the identity columns, with the rest behind Edit. */
+function qspRegister(rows){
+  const list = qspOrder(rows);
+  if (!list.length)
+    return '<div class="panel"><div class="empty"><p>Nobody on the register yet.</p>'
+      + '<button class="btn" onclick="editQsp()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'qsp_students\')">Import from Excel</button></div></div>';
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-qsp', 'Search by name, father, B-Form or school\u2026', list.length + ' students')
+    + '<div class="scroll' + (list.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-qsp">'
+    + '<thead><tr><th class="sn">Sr.#</th><th>Student</th><th>Father</th><th>Contact</th>'
+    + '<th>Jamatkhana</th><th>Current school</th><th>Proposed school</th>'
+    + '<th class="num">Monthly</th><th></th></tr></thead><tbody>'
+    + list.map((r,i) => '<tr><td class="sn">' + (r.serial_no || i+1) + '</td>'
+      + '<td>' + esc(r.full_name)
+        + (r.b_form && !/^n\/?a$/i.test(r.b_form) ? '<div class="mini">' + esc(r.b_form) + '</div>'
+           : '<div class="mini">no B-Form</div>') + '</td>'
+      + '<td>' + esc(r.father_name || '\u2014')
+        + (r.father_cnic ? '<div class="mini">' + esc(r.father_cnic) + '</div>' : '') + '</td>'
+      + '<td>' + esc(r.contact || '\u2014') + '</td>'
+      + '<td>' + esc(r.jamatkhana || r.area_name || '\u2014') + '</td>'
+      + '<td>' + esc(r.cur_school || '\u2014')
+        + (r.cur_last_class && r.cur_last_class !== ' -' ? '<div class="mini">' + esc(r.cur_last_class) + '</div>' : '') + '</td>'
+      + '<td>' + esc(r.new_school || '\u2014')
+        + (r.new_category ? '<div class="mini">category ' + esc(r.new_category) + '</div>' : '') + '</td>'
+      + '<td class="num">' + (qspMonthly(r) || num(r.total_monthly) ? money(num(r.total_monthly) || qspMonthly(r)) : '\u2014') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editQsp(\'' + r.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'qsp_students\',\'' + r.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+}
+
+/* The support side of the sheet, with the totals worked out. */
+function qspSupport(rows){
+  const list = qspOrder(rows.filter(r => r.status !== 'withdrawn'));
+  if (!list.length)
+    return '<div class="panel"><div class="empty"><p>Nothing to show yet.</p></div></div>';
+  let tm = 0, ty = 0;
+  const body = list.map((r,i) => {
+    const m = num(r.total_monthly) || qspMonthly(r);
+    const y = num(r.total_yearly) || qspYearly(r);
+    tm += m; ty += y;
+    return '<tr><td class="sn">' + (r.serial_no || i+1) + '</td>'
+      + '<td>' + esc(r.full_name) + '</td>'
+      + '<td>' + esc(r.new_school || '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_monthly_fee) ? money(r.new_monthly_fee) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_admission_fee) ? money(r.new_admission_fee) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_annual_fee) ? money(r.new_annual_fee) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_transport_fee) ? money(r.new_transport_fee) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_books) ? money(r.new_books) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.new_uniform) ? money(r.new_uniform) : '\u2014') + '</td>'
+      + '<td class="num">' + (qspOneOff(r) ? money(qspOneOff(r)) : '\u2014') + '</td>'
+      + '<td class="num"><b>' + money(m) + '</b></td>'
+      + '<td class="num">' + money(y) + '</td>'
+      + '<td style="width:1%"><button class="btn sm ghost" onclick="editQsp(\'' + r.id + '\')">Edit</button></td></tr>';
+  }).join('');
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-qsps', 'Search\u2026', list.length + ' students')
+    + '<div class="scroll' + (list.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-qsps">'
+    + '<thead><tr><th class="sn">Sr.#</th><th>Student</th><th>Proposed school</th>'
+    + '<th class="num">Monthly fee</th><th class="num">Admission</th><th class="num">Annual</th>'
+    + '<th class="num">Transport</th><th class="num">Books</th><th class="num">Uniform</th>'
+    + '<th class="num">One-off</th><th class="num">Total monthly</th><th class="num">Total yearly</th>'
+    + '<th></th></tr></thead><tbody>'
+    + body
+    + '</tbody><tfoot><tr><td></td><td>Total (' + list.length + ')</td><td colspan="6"></td>'
+    + '<td class="num">Rs ' + money(list.reduce((t,r) => t + qspOneOff(r), 0)) + '</td>'
+    + '<td class="num">Rs ' + money(tm) + '</td><td class="num">Rs ' + money(ty) + '</td><td></td></tr></tfoot>'
+    + '</table></div></div></div>';
+}
+
+async function editQsp(id){
+  const rows = await qspData();
+  const r = id ? rows.find(x => x.id === id) : { local_council:'Kharadar', status:'active' };
+  const f = (k, type) => {
+    const d = QSP_FIELDS.find(x => x.k === k);
+    return fld('q-' + k, d.h, r[k], type || (d.type === 'number' ? 'number' : undefined));
+  };
+  openModal(id ? 'Edit student' : 'Add to the QSP register',
+    '<div class="grid g4">' + f('serial_no') + f('bts_no') + f('local_council') + f('jamatkhana') + '</div>'
+    + '<div class="grid g3">' + f('full_name') + f('b_form') + f('area_name') + '</div>'
+    + '<div class="grid g4">' + f('father_name') + f('father_cnic') + f('contact') + f('date_of_birth') + '</div>'
+    + '<h4 class="serif" style="margin:16px 0 10px">Current school</h4>'
+    + '<div class="grid g4">' + f('cur_school') + f('cur_last_class') + f('cur_monthly_fee') + f('cur_swb_assistance') + '</div>'
+    + '<div class="grid g4">' + f('cur_family_contribution') + f('cur_tuition_remedial') + f('take_in_year') + f('graduation_year') + '</div>'
+    + '<h4 class="serif" style="margin:16px 0 10px">Proposed school and the support requested</h4>'
+    + '<div class="grid g3">' + f('new_school') + f('new_category') + f('new_grade') + '</div>'
+    + '<div class="grid g4">' + f('new_monthly_fee') + f('new_admission_fee') + f('new_annual_fee') + f('new_transport_fee') + '</div>'
+    + '<div class="grid g4">' + f('new_parent_transport') + f('new_tuition_fee') + f('new_books') + f('new_uniform') + '</div>'
+    + '<div class="grid g3">' + f('new_nutrition') + f('total_monthly') + f('total_yearly') + '</div>'
+    + '<p class="mini" style="margin:-8px 0 14px">Leave the two totals blank and they are worked out '
+    + 'from the figures above.</p>'
+    + '<div class="grid g2">' + sel('q-status','Status',
+        [['active','On the register'],['placed','Placed in a school'],['withdrawn','Withdrawn']], r.status)
+    + '</div>' + fld('q-comments','Comments', r.comments, 'textarea'),
+    async () => {
+      if (!mv('q-full_name')){ toast('A student name is required'); return; }
+      const row = { status:mv('q-status') };
+      QSP_FIELDS.forEach(d => {
+        const val = mv('q-' + d.k);
+        row[d.k] = d.type === 'number' ? (val === '' ? null : num(val)) : val;
+      });
+      row.comments = mv('q-comments');
+      id ? await db.update('qsp_students', id, row) : await db.insert('qsp_students', stampArea(row));
+      qspState.data = null;
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+
+/* =====================================================================
+   Tuition Fees — the approved list, and the national council
+   contribution recorded month by month.
+   The sheet keeps one column per month; here each month is a row, so a
+   new month can be taken from the one before it.
+   ===================================================================== */
+const TUI_FIELDS = [
+  { k:'serial_no',       h:'Sr.#', type:'number', w:7 },
+  { k:'take_in_year',    h:'Take in year in QSP', w:13 },
+  { k:'bts_no',          h:'BTS #', w:10 },
+  { k:'local_council',   h:'Local Council', w:14 },
+  { k:'jamatkhana',      h:'Jamatkhana', w:14 },
+  { k:'area_name',       h:'Area', w:15 },
+  { k:'full_name',       h:"Student's Name:*", required:true, w:26 },
+  { k:'b_form',          h:'B-Form Number', w:19 },
+  { k:'contact',         h:'Contact Number:', w:17 },
+  { k:'date_of_birth',   h:'Date of Birth', w:14 },
+  { k:'prev_school',     h:'Previous School Name (transferred from)', w:24 },
+  { k:'prev_category',   h:'School Category', w:11 },
+  { k:'class_joining',   h:'Class as of joining AKES', w:13 },
+  { k:'new_school',      h:'School Name (transferred to)', w:24 },
+  { k:'new_category',    h:'School Category', w:11 },
+  { k:'taken_year',      h:'Taken year', w:11 },
+  { k:'graduation_year', h:'Graduation year', w:12 },
+  { k:'monthly_school_fee',           h:'Monthly School fees', type:'number', w:13 },
+  { k:'admission_fee',                h:'Admission fees', type:'number', w:12 },
+  { k:'parent_school_contribution',   h:'Parents contribution in school fees', type:'number', w:14 },
+  { k:'transport_fee',                h:'Transport Fees', type:'number', w:12 },
+  { k:'parent_transport_contribution',h:'Parents contribution in transport', type:'number', w:14 },
+  { k:'actual_tuition_fee',           h:'ACTUAL TTN FEES', type:'number', w:13 },
+  { k:'parent_contribution',          h:"PARENT'S CONTRI", type:'number', w:13 },
+  { k:'leb_contribution',             h:'LEB CONTRI', type:'number', w:12 },
+  { k:'swb_assistance',               h:'SWB Assistance in School Fees', type:'number', w:14 }
+];
+
+async function tuiData(){
+  if (!tuiState.data){
+    const [students, months] = await Promise.all([
+      sList('tuition_students'), sList('tuition_months')
+    ]);
+    tuiState.data = { students, months };
+  }
+  return tuiState.data;
+}
+
+async function pageTuition(v){
+  let d;
+  try{
+    const [students, months] = await Promise.all([sList('tuition_students'), sList('tuition_months')]);
+    d = { students, months };
+  }catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('Tuition Fees','')
+        + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
+        + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  tuiState.data = d;
+  const names = { overview:'Dashboard', register:'Approved list',
+                  months:'Monthly contributions', activities:'Activities from areas' };
+  let h = head('Tuition Fees \u00b7 ' + (names[tuiState.tab] || ''),
+    tuiState.tab === 'months'
+      ? 'The national council contribution, month by month. A new month can be taken from the one before it.'
+      : WORKSPACES.tuition.blurb,
+    tuiActions());
+  h += scopeBanner;
+  h += '<div id="tui-body">';
+  if (tuiState.tab === 'overview')   h += tuiOverview(d);
+  if (tuiState.tab === 'register')   h += tuiRegister(d);
+  if (tuiState.tab === 'months')     h += tuiMonths(d);
+  if (tuiState.tab === 'activities') h += await portfolioActivities('tuition');
+  h += '</div>';
+  v.innerHTML = h;
+}
+
+function tuiActions(){
+  const t = tuiState.tab;
+  if (t === 'activities' || t === 'overview') return '';
+  if (t === 'months')
+    return '<button class="btn ghost" onclick="carryTuitionMonth()">Take from previous month</button>'
+      + '<button class="btn ghost" onclick="exportTuitionMonths()">Export</button>'
+      + '<button class="btn send" onclick="openShare(\'tui_months\')">Send</button>';
+  return '<button class="btn ghost" onclick="openImport(\'tuition_students\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportTuition()">Export</button>'
+    + '<button class="btn send" onclick="openShare(\'tui_register\')">Send</button>'
+    + '<button class="btn" onclick="editTuition()">Add student</button>';
+}
+
+const tuiOrder = list => list.slice().sort((a,b) =>
+  (a.serial_no || 9999) - (b.serial_no || 9999)
+  || (a.created_at || '').localeCompare(b.created_at || '')
+  || a.full_name.localeCompare(b.full_name));
+
+function tuiMonthRows(d, m, y){
+  return d.months.filter(x => x.month === m && x.year === y);
+}
+
+function tuiOverview(d){
+  const live = d.students.filter(s => s.status !== 'left');
+  const m = tuiState.month, y = tuiState.year;
+  const rows = tuiMonthRows(d, m, y);
+  const nc = rows.reduce((t,r) => t + num(r.nc_contribution), 0);
+  const par = rows.reduce((t,r) => t + num(r.parent_contribution), 0);
+  const leb = rows.reduce((t,r) => t + num(r.leb_contribution), 0);
+  const yearNc = d.months.filter(x => x.year === y).reduce((t,r) => t + num(r.nc_contribution), 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">On the approved list</div><div class="v">' + live.length + '</div></div>'
+    + '<div><div class="k">' + MONTHS[m-1] + ' claimed from NC</div><div class="v">Rs ' + money(nc) + '</div></div>'
+    + '<div><div class="k">Recorded this month</div><div class="v">' + rows.length + ' of ' + live.length + '</div></div>'
+    + '<div><div class="k">' + y + ' total from NC</div><div class="v">Rs ' + money(yearNc) + '</div></div>'
+    + '</div>'
+    + '<div class="stats">'
+    + '<div><div class="k">Parent contribution</div><div class="v">Rs ' + money(par) + '</div></div>'
+    + '<div><div class="k">LEB contribution</div><div class="v">Rs ' + money(leb) + '</div></div>'
+    + '<div><div class="k">Transport this month</div><div class="v">Rs '
+      + money(live.reduce((t,s) => t + num(s.transport_fee), 0)) + '</div></div>'
+    + '<div><div class="k">Still to record</div><div class="v">'
+      + Math.max(0, live.length - rows.length) + '</div></div>'
+    + '</div>';
+
+  if (!live.length)
+    return h + '<div class="panel"><div class="empty"><p>Nobody on the approved list yet.</p>'
+      + '<button class="btn" onclick="tuiState.tab=\'register\';render()">Open the list</button> '
+      + '<button class="btn ghost" onclick="openImport(\'tuition_students\')">Import the sheet</button></div></div>';
+
+  if (rows.length < live.length)
+    h += '<div class="note"><b>' + (live.length - rows.length) + ' student'
+       + (live.length - rows.length === 1 ? ' has' : 's have') + ' no figure for '
+       + MONTHS[m-1] + ' ' + y + '.</b> '
+       + '<button class="btn sm" onclick="tuiState.tab=\'months\';render()">Open the month</button></div>';
+
+  // month by month across the year
+  h += '<div class="panel"><h2>' + y + ' month by month</h2><div class="body flush"><div class="scroll">'
+    + '<table class="ledger"><thead><tr><th>Month</th><th class="num">Students</th>'
+    + '<th class="num">NC contribution</th><th class="num">Parent</th><th class="num">LEB</th><th></th></tr></thead><tbody>'
+    + MONTHS.map((name,i) => {
+        const r = tuiMonthRows(d, i+1, y);
+        if (!r.length) return '';
+        return '<tr><td>' + name + '</td><td class="num">' + r.length + '</td>'
+          + '<td class="num">Rs ' + money(r.reduce((t,x) => t + num(x.nc_contribution), 0)) + '</td>'
+          + '<td class="num">' + money(r.reduce((t,x) => t + num(x.parent_contribution), 0)) + '</td>'
+          + '<td class="num">' + money(r.reduce((t,x) => t + num(x.leb_contribution), 0)) + '</td>'
+          + '<td style="width:1%"><button class="btn sm ghost" onclick="tuiState.month=' + (i+1)
+            + ';tuiState.tab=\'months\';render()">Open</button></td></tr>';
+      }).join('') || '<tr><td colspan="6"><div class="empty"><p>No month recorded yet for ' + y + '.</p></div></td></tr>'
+    + '</tbody></table></div></div></div>';
+  return h;
+}
+
+function tuiRegister(d){
+  const list = tuiOrder(d.students);
+  if (!list.length)
+    return '<div class="panel"><div class="empty"><p>Nobody on the approved list yet.</p>'
+      + '<button class="btn" onclick="editTuition()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'tuition_students\')">Import from Excel</button></div></div>';
+  return '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-tui', 'Search by name, B-Form, school or area\u2026', list.length + ' students')
+    + '<div class="scroll' + (list.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-tui">'
+    + '<thead><tr><th class="sn">Sr.#</th><th>Student</th><th>Area</th><th>Class</th>'
+    + '<th>Transferred from</th><th>Transferred to</th><th class="num">Tuition fee</th>'
+    + '<th class="num">Transport</th><th>Status</th><th></th></tr></thead><tbody>'
+    + list.map((r,i) => '<tr><td class="sn">' + (r.serial_no || i+1) + '</td>'
+      + '<td>' + esc(r.full_name)
+        + (r.b_form ? '<div class="mini">' + esc(r.b_form) + '</div>' : '') + '</td>'
+      + '<td>' + esc(r.area_name || r.jamatkhana || '\u2014') + '</td>'
+      + '<td>' + esc(r.class_joining || '\u2014') + '</td>'
+      + '<td>' + esc(r.prev_school || '\u2014')
+        + (r.prev_category ? '<div class="mini">category ' + esc(r.prev_category) + '</div>' : '') + '</td>'
+      + '<td>' + esc(r.new_school || '\u2014')
+        + (r.new_category ? '<div class="mini">category ' + esc(r.new_category) + '</div>' : '') + '</td>'
+      + '<td class="num">' + (num(r.actual_tuition_fee) ? money(r.actual_tuition_fee) : '\u2014') + '</td>'
+      + '<td class="num">' + (num(r.transport_fee) ? money(r.transport_fee) : '\u2014') + '</td>'
+      + '<td>' + (r.status === 'left' ? '<span class="tag t-grey">Left</span>'
+          : r.status === 'new_term' ? '<span class="tag t-blue">New term</span>'
+          : '<span class="tag t-green">Approved</span>') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editTuition(\'' + r.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'tuition_students\',\'' + r.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody></table></div></div></div>';
+}
+
+
+/* ---------- the month: type straight into the grid ---------- */
+function tuiMonths(d){
+  const live = tuiOrder(d.students.filter(x => x.status !== 'left'));
+  const m = tuiState.month, y = tuiState.year;
+  const years = []; for (let yy = new Date().getFullYear()+1; yy >= 2022; yy--) years.push(yy);
+  const rowFor = sid => d.months.find(x => x.student_id === sid && x.month === m && x.year === y);
+
+  let h = '<div class="panel"><h2>' + MONTHS[m-1] + ' ' + y
+    + '<span class="actions">'
+    + '<select style="width:130px" onchange="tuiState.month=+this.value;render()">'
+      + MONTHS.map((x,i) => '<option value="' + (i+1) + '"' + (m === i+1 ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select>'
+    + '<select style="width:92px" onchange="tuiState.year=+this.value;render()">'
+      + years.map(x => '<option' + (y === x ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select></span></h2><div class="body flush">';
+
+  if (!live.length) return h + '<div class="empty"><p>Nobody on the approved list.</p></div></div></div>';
+
+  const prevM = m === 1 ? 12 : m - 1, prevY = m === 1 ? y - 1 : y;
+  const prevCount = tuiMonthRows(d, prevM, prevY).length;
+  const thisCount = tuiMonthRows(d, m, y).length;
+  if (!thisCount && prevCount)
+    h += '<div class="note" style="margin:16px 18px 0"><b>Nothing recorded for ' + MONTHS[m-1] + ' yet.</b> '
+      + MONTHS[prevM-1] + ' ' + prevY + ' has ' + prevCount + ' row' + (prevCount === 1 ? '' : 's')
+      + '. <button class="btn sm" onclick="carryTuitionMonth()">Take them from ' + MONTHS[prevM-1] + '</button></div>';
+
+  let tn = 0, tp = 0, tl = 0;
+  const body = live.map((st,i) => {
+    const r = rowFor(st.id) || {};
+    tn += num(r.nc_contribution); tp += num(r.parent_contribution); tl += num(r.leb_contribution);
+    const cell = (field, val) => '<td class="num"><input type="number" min="0" style="text-align:right" '
+      + 'value="' + esc(val === undefined || val === null || val === 0 ? '' : val) + '" '
+      + 'onchange="saveTuitionMonth(\'' + st.id + '\',\'' + field + '\',this.value)"></td>';
+    return '<tr><td class="sn">' + (st.serial_no || i+1) + '</td>'
+      + '<td>' + esc(st.full_name)
+        + (st.area_name ? '<div class="mini">' + esc(st.area_name) + '</div>' : '') + '</td>'
+      + '<td>' + esc(st.new_school || '\u2014') + '</td>'
+      + cell('nc_contribution', r.nc_contribution)
+      + cell('parent_contribution', r.parent_contribution)
+      + cell('leb_contribution', r.leb_contribution)
+      + '<td><label style="display:flex;gap:7px;align-items:center;margin:0;color:var(--text)">'
+        + '<input type="checkbox" style="width:auto"' + (r.paid ? ' checked' : '')
+        + ' onchange="saveTuitionMonth(\'' + st.id + '\',\'paid\',this.checked)"> paid</label></td>'
+      + '<td><input value="' + esc(r.remarks || '') + '" '
+        + 'onchange="saveTuitionMonth(\'' + st.id + '\',\'remarks\',this.value)"></td></tr>';
+  }).join('');
+
+  h += '<div class="scroll' + (live.length > 12 ? ' tall' : '') + '"><table class="ledger">'
+    + '<thead><tr><th class="sn">Sr.#</th><th>Student</th><th>School</th>'
+    + '<th class="num">NC contribution</th><th class="num">Parent</th><th class="num">LEB</th>'
+    + '<th>Paid</th><th>Remarks</th></tr></thead><tbody>' + body
+    + '</tbody><tfoot><tr><td></td><td>Total (' + live.length + ' students)</td><td></td>'
+    + '<td class="num">Rs ' + money(tn) + '</td>'
+    + '<td class="num">' + money(tp) + '</td>'
+    + '<td class="num">' + money(tl) + '</td>'
+    + '<td colspan="2">' + thisCount + ' of ' + live.length + ' recorded</td></tr></tfoot></table></div>'
+    + '</div></div>';
+  return h;
+}
+
+async function saveTuitionMonth(studentId, field, value){
+  const d = tuiState.data;
+  const m = tuiState.month, y = tuiState.year;
+  let row = d.months.find(x => x.student_id === studentId && x.month === m && x.year === y);
+  const patch = {};
+  patch[field] = (field === 'paid') ? !!value
+    : (field === 'remarks') ? value : num(value);
+  savingStart();
+  try{
+    if (row){
+      Object.assign(row, patch);
+      await db.update('tuition_months', row.id, patch);
+    } else {
+      const st = d.students.find(x => x.id === studentId);
+      const base = { student_id:studentId, month:m, year:y,
+        nc_contribution:0, parent_contribution:0, leb_contribution:0, paid:false,
+        area_id: st ? st.area_id : null };
+      const saved = await db.insert('tuition_months', Object.assign(base, patch));
+      d.months.push(saved);
+    }
+    savingDone(true);
+    if (field !== 'remarks') render();
+  }catch(err){
+    savingDone(false);
+    toast('Could not save: ' + (err.message || err));
+  }
+}
+
+/* Take the month from the one before it: the same students and the same
+   figures, ready to be corrected rather than typed again. */
+async function carryTuitionMonth(){
+  const d = await tuiData();
+  const m = tuiState.month, y = tuiState.year;
+  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
+  const prev = tuiMonthRows(d, pm, py);
+  const live = d.students.filter(x => x.status !== 'left');
+
+  if (!prev.length){
+    // no previous month: fall back to each student's standing figures
+    const missing = live.filter(st => !d.months.some(x => x.student_id === st.id && x.month === m && x.year === y));
+    if (!missing.length){ toast('Every student already has a row for ' + MONTHS[m-1]); return; }
+    openModal('Start ' + MONTHS[m-1] + ' ' + y,
+      '<p style="margin-top:0">' + MONTHS[pm-1] + ' ' + py + ' has nothing to copy. '
+      + 'Start the month from each student\u2019s standing figures on the approved list instead?</p>'
+      + '<p class="mini">' + missing.length + ' row' + (missing.length === 1 ? '' : 's')
+      + ' will be created, which you can then correct.</p>',
+      async () => {
+        await db.insertMany('tuition_months', missing.map(st => ({
+          student_id:st.id, month:m, year:y, area_id:st.area_id || null,
+          nc_contribution:num(st.actual_tuition_fee), parent_contribution:num(st.parent_contribution),
+          leb_contribution:num(st.leb_contribution), paid:false
+        })));
+        tuiState.data = null;
+        closeModal(); toast(missing.length + ' rows created for ' + MONTHS[m-1]); render();
+      }, 'Start the month');
+    return;
+  }
+
+  const already = tuiMonthRows(d, m, y);
+  const toCopy = prev.filter(p => !already.some(a => a.student_id === p.student_id)
+    && live.some(st => st.id === p.student_id));
+  if (!toCopy.length){ toast('Every student already has a row for ' + MONTHS[m-1]); return; }
+
+  const total = toCopy.reduce((t,p) => t + num(p.nc_contribution), 0);
+  openModal('Take ' + MONTHS[m-1] + ' from ' + MONTHS[pm-1],
+    '<p style="margin-top:0">Copy ' + toCopy.length + ' row' + (toCopy.length === 1 ? '' : 's')
+    + ' from <b>' + MONTHS[pm-1] + ' ' + py + '</b> into <b>' + MONTHS[m-1] + ' ' + y + '</b>?</p>'
+    + '<p class="mini">The NC, parent and LEB figures come across as they were, '
+    + 'Rs ' + money(total) + ' in all, and nothing is marked paid. Correct them afterwards.</p>'
+    + (already.length ? '<div class="note">' + already.length + ' student'
+        + (already.length === 1 ? ' already has a row' : 's already have rows')
+        + ' for ' + MONTHS[m-1] + '. Those are left alone.</div>' : ''),
+    async () => {
+      await db.insertMany('tuition_months', toCopy.map(p => ({
+        student_id:p.student_id, month:m, year:y, area_id:p.area_id || null,
+        nc_contribution:num(p.nc_contribution), parent_contribution:num(p.parent_contribution),
+        leb_contribution:num(p.leb_contribution), paid:false, remarks:''
+      })));
+      tuiState.data = null;
+      closeModal();
+      toast(toCopy.length + ' row' + (toCopy.length === 1 ? '' : 's') + ' taken from ' + MONTHS[pm-1]);
+      render();
+    }, 'Copy them across');
+}
+
+async function editTuition(id){
+  const d = await tuiData();
+  const r = id ? d.students.find(x => x.id === id) : { local_council:'Kharadar', status:'approved' };
+  const f = k => {
+    const def = TUI_FIELDS.find(x => x.k === k);
+    return fld('u-' + k, def.h, r[k], def.type === 'number' ? 'number' : undefined);
+  };
+  openModal(id ? 'Edit student' : 'Add to the approved list',
+    '<div class="grid g4">' + f('serial_no') + f('take_in_year') + f('bts_no') + f('local_council') + '</div>'
+    + '<div class="grid g3">' + f('full_name') + f('b_form') + f('contact') + '</div>'
+    + '<div class="grid g3">' + f('jamatkhana') + f('area_name') + f('date_of_birth') + '</div>'
+    + '<h4 class="serif" style="margin:16px 0 10px">School</h4>'
+    + '<div class="grid g3">' + f('prev_school') + f('prev_category') + f('class_joining') + '</div>'
+    + '<div class="grid g4">' + f('new_school') + f('new_category') + f('taken_year') + f('graduation_year') + '</div>'
+    + '<h4 class="serif" style="margin:16px 0 10px">Fees and contributions</h4>'
+    + '<div class="grid g3">' + f('monthly_school_fee') + f('admission_fee') + f('parent_school_contribution') + '</div>'
+    + '<div class="grid g3">' + f('transport_fee') + f('parent_transport_contribution') + f('actual_tuition_fee') + '</div>'
+    + '<div class="grid g3">' + f('parent_contribution') + f('leb_contribution') + f('swb_assistance') + '</div>'
+    + '<p class="mini" style="margin:-8px 0 14px">These are the standing figures. The month-by-month '
+    + 'national council contribution is recorded under <b>Monthly contributions</b>.</p>'
+    + '<div class="grid g2">' + sel('u-status','Status',
+        [['approved','Approved'],['new_term','New academic term'],['left','Left']], r.status)
+    + fld('u-remarks','Remarks', r.remarks) + '</div>',
+    async () => {
+      if (!mv('u-full_name')){ toast('A student name is required'); return; }
+      const row = { status:mv('u-status'), remarks:mv('u-remarks') };
+      TUI_FIELDS.forEach(def => {
+        const val = mv('u-' + def.k);
+        row[def.k] = def.type === 'number' ? (val === '' ? null : num(val)) : val;
+      });
+      id ? await db.update('tuition_students', id, row)
+         : await db.insert('tuition_students', stampArea(row));
+      tuiState.data = null;
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+
+
+/* The tuition sheet keeps one column per month, headed like
+   "NC CONTR JAN 26" or "NC CONTRI SEP 26". These are read into the
+   month-by-month rows so nothing has to be retyped. */
+const MONTH_WORDS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+function parseMonthColumn(headText){
+  const t = String(headText || '').toLowerCase();
+  if (t.indexOf('nc contr') < 0) return null;
+  let m = -1;
+  for (let i = 0; i < 12; i++){
+    const w = MONTH_WORDS[i];
+    if (new RegExp('\\b' + w, 'i').test(t)){ m = i + 1; break; }
+  }
+  if (m < 0) return null;
+  const yr = t.match(/\b(20\d{2}|\d{2})\b\s*$/) || t.match(/\b(20\d{2})\b/) || t.match(/\b(\d{2})\b/);
+  let y = yr ? parseInt(yr[1], 10) : new Date().getFullYear();
+  if (y < 100) y += 2000;
+  return { month:m, year:y };
+}
+
+/* Reads the monthly columns out of the grid that was just imported. */
+async function importTuitionMonths(saved){
+  const grid = IMPORT.grid, hr = IMPORT.headerRow;
+  const header = grid[hr] || [];
+  const cols = [];
+  header.forEach((h, i) => {
+    const p = parseMonthColumn(h);
+    if (p) cols.push({ i, month:p.month, year:p.year });
+  });
+  if (!cols.length) return 0;
+
+  const nameCol = guessColumn(header, "Student's Name:*");
+  if (nameCol < 0) return 0;
+
+  const byName = {};
+  saved.forEach(st => { byName[normHead(st.full_name)] = st; });
+
+  const fresh = [];
+  for (let r = hr + 1; r < grid.length; r++){
+    const row = grid[r] || [];
+    const st = byName[normHead((row[nameCol] || '').trim())];
+    if (!st) continue;
+    cols.forEach(c => {
+      const raw = (row[c.i] || '').trim();
+      if (!raw || /^[\s\-_\u2014]*$/.test(raw)) return;
+      const amt = num(raw);
+      if (!amt) return;
+      fresh.push({ student_id:st.id, month:c.month, year:c.year, area_id:st.area_id || null,
+        nc_contribution:amt, parent_contribution:0, leb_contribution:0, paid:false });
+    });
+  }
+  if (!fresh.length) return 0;
+  await db.insertMany('tuition_months', fresh);
+  return fresh.length;
+}
+
+/* ---------- QSP and Tuition: out to Excel in the board's own layout ---------- */
+async function qspTuiSheet(opts){
+  try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = JURISDICTION_NAME;
+  const ws = wb.addWorksheet(opts.sheetName.slice(0,31));
+  const last = opts.header.length;
+  const thin = { style:'thin' }, border = { top:thin, left:thin, bottom:thin, right:thin };
+
+  ws.mergeCells('A1:' + columnLetter(last) + '1');
+  const t1 = ws.getCell('A1');
+  t1.value = opts.title;
+  t1.font = { bold:true, size:14 };
+  t1.alignment = { horizontal:'center', vertical:'middle' };
+
+  let headRow = 2;
+  // the grouped band above the headings, where the sheet has one
+  if (opts.groups){
+    headRow = 3;
+    opts.groups.forEach(g => {
+      ws.mergeCells(columnLetter(g.from) + '2:' + columnLetter(g.to) + '2');
+      const c = ws.getCell(columnLetter(g.from) + '2');
+      c.value = g.label;
+      c.font = { bold:true, size:11 };
+      c.alignment = { horizontal:'center' };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFDDE7E1' } };
+      c.border = border;
+    });
+  }
+  opts.header.forEach((hd,i) => {
+    const c = ws.getCell(columnLetter(i+1) + headRow);
+    c.value = hd;
+    c.font = { bold:true, size:10.5 };
+    c.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEDEDED' } };
+    c.border = border;
+  });
+  opts.rows.forEach((r,i) => r.forEach((val,j) => {
+    const c = ws.getCell(columnLetter(j+1) + (headRow + 1 + i));
+    c.value = val;
+    c.font = { size:10.5 };
+    c.border = border;
+    if (typeof val === 'number') c.numFmt = '#,##0';
+  }));
+  if (opts.total){
+    const r = headRow + 1 + opts.rows.length;
+    opts.total.forEach((val,j) => {
+      if (val === null || val === undefined || val === '') return;
+      const c = ws.getCell(columnLetter(j+1) + r);
+      c.value = val;
+      c.font = { bold:true, size:10.5 };
+      c.border = { top:thin, left:thin, bottom:{ style:'double' }, right:thin };
+      if (typeof val === 'number') c.numFmt = '#,##0';
+    });
+  }
+  (opts.widths || opts.header.map(() => 16)).forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  ws.getRow(headRow).height = 42;
+  ws.views = [{ state:'frozen', ySplit:headRow }];
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    opts.filename);
+  toast('Downloaded');
+}
+
+async function exportQsp(){
+  const list = qspOrder(await qspData());
+  if (!list.length){ toast('Nothing to export'); return; }
+  const rows = list.map((r,i) => QSP_FIELDS.map(f => {
+    if (f.k === 'serial_no') return r.serial_no || i+1;
+    if (f.k === 'total_monthly') return num(r.total_monthly) || qspMonthly(r) || '';
+    if (f.k === 'total_yearly')  return num(r.total_yearly)  || qspYearly(r)  || '';
+    const v = r[f.k];
+    if (f.type === 'number') return (v === null || v === undefined || v === '') ? '' : num(v);
+    return v || '';
+  }));
+  const total = QSP_FIELDS.map(f => {
+    if (f.k === 'serial_no') return '';            // a count, not a figure to add up
+    if (f.k === 'full_name') return 'Total (' + list.length + ')';
+    if (f.k === 'total_monthly') return list.reduce((t,r) => t + (num(r.total_monthly) || qspMonthly(r)), 0);
+    if (f.k === 'total_yearly')  return list.reduce((t,r) => t + (num(r.total_yearly)  || qspYearly(r)),  0);
+    if (f.type === 'number')     return list.reduce((t,r) => t + num(r[f.k]), 0) || '';
+    return '';
+  });
+  const first = k => QSP_FIELDS.findIndex(f => f.k === k) + 1;
+  await qspTuiSheet({
+    sheetName:'BioData',
+    title:'Quality Schooling Program \u2014 ' + (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction'
+      ? 'Kharadar Region' : areaName(SCOPE.area)),
+    groups:[{ from:first('cur_school'), to:first('graduation_year'), label:'Current School data' },
+            { from:first('new_school'), to:first('total_yearly'),
+              label:'Proposed/Transition School (Requested Support)' }],
+    header:QSP_FIELDS.map(f => f.h),
+    widths:QSP_FIELDS.map(f => f.w || 16),
+    rows:rows, total:total,
+    filename:'QSP_Out_of_School.xlsx'
+  });
+}
+
+async function exportTuition(){
+  const d = await tuiData();
+  const list = tuiOrder(d.students);
+  if (!list.length){ toast('Nothing to export'); return; }
+  // the months actually recorded, as their own columns, the way the sheet reads
+  const periods = [];
+  d.months.forEach(x => {
+    const k = x.year + '-' + String(x.month).padStart(2,'0');
+    if (!periods.some(p => p.k === k)) periods.push({ k, m:x.month, y:x.year });
+  });
+  periods.sort((a,b) => a.k.localeCompare(b.k));
+  const monthHead = periods.map(p => 'NC CONTR ' + MONTHS[p.m-1].slice(0,3).toUpperCase() + ' ' + String(p.y).slice(2));
+
+  const header = TUI_FIELDS.map(f => f.h);
+  const idx = header.indexOf("PARENT'S CONTRI");
+  const head1 = header.slice(0, idx), head2 = header.slice(idx);
+  const widths = TUI_FIELDS.map(f => f.w || 14);
+  const w1 = widths.slice(0, idx), w2 = widths.slice(idx);
+
+  const rows = list.map((r,i) => {
+    const a = TUI_FIELDS.slice(0, idx).map(f => {
+      if (f.k === 'serial_no') return r.serial_no || i+1;
+      const v = r[f.k];
+      if (f.type === 'number') return (v === null || v === undefined || v === '') ? '' : num(v);
+      return v || '';
+    });
+    const mids = periods.map(p => {
+      const x = d.months.find(z => z.student_id === r.id && z.month === p.m && z.year === p.y);
+      return x && num(x.nc_contribution) ? num(x.nc_contribution) : '';
+    });
+    const b = TUI_FIELDS.slice(idx).map(f => {
+      const v = r[f.k];
+      if (f.type === 'number') return (v === null || v === undefined || v === '') ? '' : num(v);
+      return v || '';
+    });
+    const monthlyNc = periods.length
+      ? num((d.months.find(z => z.student_id === r.id
+          && z.month === periods[periods.length-1].m && z.year === periods[periods.length-1].y) || {}).nc_contribution)
+      : 0;
+    return a.concat(mids, b, [monthlyNc || '', monthlyNc * 3 || '', monthlyNc * 12 || '']);
+  });
+
+  const fullHeader = head1.concat(monthHead, head2,
+    ['Total Amount (Monthly) required from national council',
+     'Total Amount (Quarterly) required from national council',
+     'Total Amount (Yearly) required from national council']);
+  const fullWidths = w1.concat(periods.map(() => 13), w2, [16,16,16]);
+  const total = fullHeader.map((h,j) => {
+    if (j === 0) return '';                        // the Sr.# column is a count
+    if (j === 6) return 'Total (' + list.length + ')';
+    const col = rows.map(r => r[j]).filter(v => typeof v === 'number');
+    return col.length ? col.reduce((t,v) => t + v, 0) : '';
+  });
+
+  await qspTuiSheet({
+    sheetName:'APPROVED LIST',
+    title:'Tuition Fees \u2014 approved list',
+    header:fullHeader, widths:fullWidths, rows:rows, total:total,
+    filename:'Tuition_Fees_Approved_List.xlsx'
+  });
+}
+
+async function exportTuitionMonths(){
+  const d = await tuiData();
+  const m = tuiState.month, y = tuiState.year;
+  const live = tuiOrder(d.students.filter(x => x.status !== 'left'));
+  if (!live.length){ toast('Nobody on the approved list'); return; }
+  const rows = live.map((st,i) => {
+    const r = d.months.find(x => x.student_id === st.id && x.month === m && x.year === y) || {};
+    return [st.serial_no || i+1, st.full_name, st.b_form || '', st.area_name || st.jamatkhana || '',
+      st.new_school || '', num(r.nc_contribution) || '', num(r.parent_contribution) || '',
+      num(r.leb_contribution) || '', r.paid ? 'Yes' : 'No', r.remarks || ''];
+  });
+  const sum = j => rows.reduce((t,r) => t + (typeof r[j] === 'number' ? r[j] : 0), 0);
+  await qspTuiSheet({
+    sheetName:MONTHS[m-1] + ' ' + y,
+    title:'Tuition Fees \u2014 national council contribution, ' + MONTHS[m-1] + ' ' + y,
+    header:['Sr.#','Student Name','B-Form Number','Area','School',
+            'NC Contribution','Parent Contribution','LEB Contribution','Paid','Remarks'],
+    widths:[7,26,19,16,24,15,15,15,8,26],
+    rows:rows,
+    total:['', 'Total (' + live.length + ')', '', '', '', sum(5), sum(6), sum(7), '', ''],
+    filename:'Tuition_NC_' + MONTHS[m-1] + '_' + y + '.xlsx'
+  });
+}
+
 /* =====================================================================
    Interface: theme, mobile drawer, command palette, table tools,
    keyboard entry, undo, and a saving indicator.
@@ -3935,6 +4810,20 @@ const WORKSPACES = {
     nav:[['overview','Dashboard'],['register','Student register'],['english','English classes'],
          ['school','School data'],['claims','Reimbursement'],['activities','Activities from areas']]
   },
+  qsp: {
+    portfolio:'qsp',
+    title:'Out of School (QSP)',
+    blurb:'The Quality Schooling Program register \u2014 children out of school, the school proposed for them, and the support requested.',
+    nav:[['overview','Dashboard'],['register','Student register'],['support','Support requested'],
+         ['activities','Activities from areas']]
+  },
+  tuition: {
+    portfolio:'tuition',
+    title:'Tuition Fees',
+    blurb:'The approved tuition list, with the national council contribution recorded month by month.',
+    nav:[['overview','Dashboard'],['register','Approved list'],['months','Monthly contributions'],
+         ['activities','Activities from areas']]
+  },
   national: {
     portfolio:'national',
     title:'National Reimbursement',
@@ -3943,7 +4832,7 @@ const WORKSPACES = {
          ['tuition','Tuition fees'],['qsp','QSP national sheet'],['activities','Activities from areas']]
   }
 };
-const PORTFOLIO_ORDER = ['ace','afghan','national'];
+const PORTFOLIO_ORDER = ['ace','afghan','national','qsp','tuition'];
 const AREA_ORDER = ['kharadar','clifton','korangi','laasi'];
 
 /* ACE classes run for these grades and subjects. */
@@ -4013,14 +4902,20 @@ const afgState = { tab:'overview', month:new Date().getMonth()+1, year:new Date(
                    sub:'register', classId:null, term:1 };
 const engState = { tab:'overview', term:1, year:new Date().getFullYear(), classId:null };
 const natState = { tab:'overview', kind:'transport', year:new Date().getFullYear() };
+const qspState = { tab:'overview' };
+const tuiState = { tab:'overview', month:new Date().getMonth()+1, year:new Date().getFullYear() };
 function wsSetTab(key, tab){
-  if (key === 'afghan')   afgState.tab = tab;
+  if (key === 'afghan')        afgState.tab = tab;
   else if (key === 'national') natState.tab = tab;
+  else if (key === 'qsp')      qspState.tab = tab;
+  else if (key === 'tuition')  tuiState.tab = tab;
   else aceState.tab = tab;
 }
 function wsTab(){
   if (workspace === 'afghan')   return afgState.tab;
   if (workspace === 'national') return natState.tab;
+  if (workspace === 'qsp')      return qspState.tab;
+  if (workspace === 'tuition')  return tuiState.tab;
   return aceState.tab;
 }
 function wsGo(tab){
@@ -4146,7 +5041,8 @@ function drawWorkspaceNav(){
 
 function go(id){
   if (id === 'home'){ goHome(); return; }
-  const asWorkspace = { ace:'ace', afghan:'afghan', national:'national', members:'members' }[id];
+  const asWorkspace = { ace:'ace', afghan:'afghan', national:'national', members:'members',
+                        qsp:'qsp', tuition:'tuition' }[id];
   if (asWorkspace){ enterWorkspace(asWorkspace); return; }
   // the register and funds live inside Fees matters
   if (id === 'students' || id === 'funds'){ feeMatters.sub = id; id = 'fees'; }
@@ -4186,6 +5082,8 @@ async function render(){
     if (page === 'ace_area')  await pageAce(v);
     if (page === 'afghan')    await pageAfghan(v);
     if (page === 'national')  await pageNational(v);
+    if (page === 'qsp')       await pageQsp(v);
+    if (page === 'tuition')   await pageTuition(v);
     if (page === 'home')      await pageHome(v);
     if (page === 'programs')  await pagePrograms(v);
     if (page === 'prf')       await pagePRF(v);
@@ -4985,6 +5883,68 @@ const rs = n => 'Rs ' + money(n);
 
 async function shareContent(kind, id){
   const sign = ['', 'Regards,', ME.name || 'Local Education Board, Kharadar'];
+  if (kind === 'qsp_register'){
+    const list = qspOrder(await qspData()).filter(r => r.status !== 'withdrawn');
+    const monthly = list.reduce((t,r) => t + (num(r.total_monthly) || qspMonthly(r)), 0);
+    return { subject:'Out of School (QSP) \u2014 register',
+      body:['Assalam-o-Alaikum,','',
+        'Quality Schooling Program register'
+          + (SCOPE.area !== 'all' && SCOPE.area !== 'jurisdiction' ? ' \u2014 ' + areaName(SCOPE.area) : '')
+          + ':','',
+        list.map((r,i) => (i+1) + '. ' + r.full_name
+          + (r.father_name ? ', s/o ' + r.father_name : '')
+          + (r.jamatkhana ? ' \u2014 ' + r.jamatkhana : '')
+          + '\n   Currently: ' + (r.cur_school || 'not recorded')
+          + (r.new_school ? '\n   Proposed: ' + r.new_school
+             + (r.new_grade ? ', grade ' + r.new_grade : '') : '')
+          + (qspMonthly(r) ? '\n   Support sought: Rs ' + money(num(r.total_monthly) || qspMonthly(r)) + ' a month' : '')
+        ).join('\n\n'),
+        '', 'Children on the register: ' + list.length
+          + '. Support sought: Rs ' + money(monthly) + ' a month.',
+        '', 'B-Form numbers and CNICs are not included in this message.',
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+      attach:'Press Export first if you want to attach the full sheet.' };
+  }
+  if (kind === 'tui_register'){
+    const d = await tuiData();
+    const list = tuiOrder(d.students.filter(x => x.status !== 'left'));
+    return { subject:'Tuition Fees \u2014 approved list',
+      body:['Assalam-o-Alaikum,','',
+        'Tuition fees approved list'
+          + (SCOPE.area !== 'all' && SCOPE.area !== 'jurisdiction' ? ' \u2014 ' + areaName(SCOPE.area) : '')
+          + ':','',
+        list.map((r,i) => (i+1) + '. ' + r.full_name
+          + (r.area_name ? ' \u2014 ' + r.area_name : '')
+          + (r.class_joining ? ', class ' + r.class_joining : '')
+          + (r.new_school ? '\n   At: ' + r.new_school : '')
+          + (num(r.actual_tuition_fee) ? '\n   Tuition fee: Rs ' + money(r.actual_tuition_fee) : '')
+        ).join('\n\n'),
+        '', 'Students on the list: ' + list.length + '.',
+        '', 'B-Form numbers are not included in this message.',
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+      attach:'Press Export first if you want to attach the full sheet.' };
+  }
+  if (kind === 'tui_months'){
+    const d = await tuiData();
+    const m = tuiState.month, y = tuiState.year;
+    const live = tuiOrder(d.students.filter(x => x.status !== 'left'));
+    const rows = tuiMonthRows(d, m, y);
+    const nc = rows.reduce((t,r) => t + num(r.nc_contribution), 0);
+    return { subject:'Tuition Fees \u2014 ' + MONTHS[m-1] + ' ' + y + ' national council contribution',
+      body:['Assalam-o-Alaikum,','',
+        'National council contribution for ' + MONTHS[m-1] + ' ' + y + ':','',
+        live.map((st,i) => {
+          const r = d.months.find(x => x.student_id === st.id && x.month === m && x.year === y);
+          return (i+1) + '. ' + st.full_name + ' \u2014 '
+            + (r && num(r.nc_contribution) ? 'Rs ' + money(r.nc_contribution)
+                 + (r.paid ? ' (paid)' : '') : 'not recorded');
+        }).join('\n'),
+        '', 'Recorded for ' + rows.length + ' of ' + live.length + ' students.',
+        'Total sought from national council: Rs ' + money(nc) + '.',
+        '', 'The full sheet is attached.',
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+      attach:'Press Export first, then attach the sheet.' };
+  }
   if (kind === 'nat_claims'){
     const rows = await natData();
     const claimed = natSum(rows,'amount_claimed') || natSum(rows,'amount');
@@ -5380,6 +6340,10 @@ function importFields(target){
     { k:'account_type',   h:'Easy Paisa/Bank Account' },
     { k:'account_number', h:'Account Number' }
   ];
+  if (target === 'qsp_students')
+    return QSP_FIELDS.map(f => ({ k:f.k, h:f.h, type:f.type, required:f.k === 'full_name' }));
+  if (target === 'tuition_students')
+    return TUI_FIELDS.map(f => ({ k:f.k, h:f.h, type:f.type, required:f.k === 'full_name' }));
   if (target === 'afghan_students') return [
     { k:'full_name',   h:'Student Name', required:true },
     { k:'father_name', h:'Father / Guardian' },
@@ -5418,7 +6382,9 @@ function openImport(target, classId){
   IMPORT.target = target;
   IMPORT.classId = classId || null;
   IMPORT.fields = importFields(target);
-  const where = target === 'eng_students' ? 'this English class roll'
+  const where = target === 'qsp_students' ? 'the Out of School (QSP) register'
+    : target === 'tuition_students' ? 'the tuition approved list, including any NC CONTR month columns'
+    : target === 'eng_students' ? 'this English class roll'
     : target === 'afghan_students' ? 'the Oklife School roll'
     : target === 'ace_teachers' ? 'the ACE teacher register'
     : target === 'ace_students' ? 'this ACE class roll'
@@ -5496,7 +6462,8 @@ function drawImport(){
 function collectImport(){
   const map = {};
   IMPORT.fields.forEach(f => { const el = $('map-' + f.k); map[f.k] = el ? +el.value : -1; });
-  const nameKey = ['students','ace_teachers','ace_students','afghan_students','eng_students']
+  const nameKey = ['students','ace_teachers','ace_students','afghan_students','eng_students',
+                   'qsp_students','tuition_students']
     .indexOf(IMPORT.target) >= 0 ? 'full_name' : 'student_name';
   const rows = [];
   for (let i = IMPORT.headerRow + 1; i < IMPORT.grid.length; i++){
@@ -5551,6 +6518,33 @@ function drawPreview(){
 async function runImport(){
   const rows = collectImport();
   if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
+
+  if (IMPORT.target === 'qsp_students' || IMPORT.target === 'tuition_students'){
+    const defs = importFields(IMPORT.target);
+    const fresh = rows.map(r => {
+      const row = {};
+      defs.forEach(f => {
+        let v = r[f.k];
+        if (v === undefined) return;
+        // the sheets use dashes and underscores where a figure is not yet known
+        if (typeof v === 'string' && /^[\s\-_\u2014]*$/.test(v)) v = f.type === 'number' ? null : '';
+        row[f.k] = f.type === 'number' ? (v === '' || v === null ? null : num(v)) : v;
+      });
+      row.status = IMPORT.target === 'qsp_students' ? 'active' : 'approved';
+      return stampArea(row);
+    }).filter(r => r.full_name);
+    const saved = await db.insertMany(IMPORT.target, fresh);
+    let extra = 0;
+    if (IMPORT.target === 'tuition_students'){
+      try{ extra = await importTuitionMonths(saved); }
+      catch(e){ console.warn('monthly columns', e); }
+    }
+    qspState.data = null; tuiState.data = null;
+    closeModal();
+    toast(fresh.length + ' row' + (fresh.length === 1 ? '' : 's') + ' imported'
+      + (extra ? ', with ' + extra + ' monthly figures' : ''));
+    render(); return;
+  }
 
   if (IMPORT.target === 'eng_students'){
     const d = await engData();
