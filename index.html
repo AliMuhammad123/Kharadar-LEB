@@ -591,7 +591,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v8.6';
+const APP_VERSION = 'v8.7';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -691,8 +691,8 @@ const DEFAULT_PORTFOLIOS = [
   { id:'ace',      name:'ACE Classes',            sort:1 },
   { id:'afghan',   name:'Afghan Matters',         sort:2 },
   { id:'national', name:'National Reimbursement', sort:3 },
-  { id:'qsp',      name:'Out of School (QSP)',    sort:4 },
-  { id:'tuition',  name:'Tuition Fees',           sort:5 }
+  { id:'qsp',      name:'Out of School',          sort:4 },
+  { id:'tuition',  name:'Tuition Fees (QSP)',     sort:5 }
 ];
 const ORG = { areas:DEFAULT_AREAS.slice(), portfolios:DEFAULT_PORTFOLIOS.slice() };
 const areaName = id => id ? ((ORG.areas.find(a => a.id === id) || {}).name || id) : 'Jurisdiction';
@@ -3652,7 +3652,7 @@ async function portfolioActivities(pid){
 
 
 /* =====================================================================
-   Out of School (QSP) — the Quality Schooling Program register.
+   Out of School — the register of children who are out of school.
    The columns, and their order, follow the board's own BioData sheet.
    ===================================================================== */
 const QSP_FIELDS = [
@@ -3713,7 +3713,7 @@ async function pageQsp(v){
   catch(err){
     const m = String(err && err.message || err);
     if (/does not exist|schema cache|relation/i.test(m)){
-      v.innerHTML = head('Out of School (QSP)','')
+      v.innerHTML = head('Out of School','')
         + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
         + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.<br>'
         + '<span class="mini">' + esc(m) + '</span></div>';
@@ -3724,7 +3724,7 @@ async function pageQsp(v){
   qspState.data = rows;
   const names = { overview:'Dashboard', register:'Student register',
                   support:'Support requested', activities:'Activities from areas' };
-  let h = head('Out of School (QSP) \u00b7 ' + (names[qspState.tab] || ''),
+  let h = head('Out of School \u00b7 ' + (names[qspState.tab] || ''),
     qspState.tab === 'overview'
       ? 'Children out of school, the school proposed for each, and the support being requested.'
       : WORKSPACES.qsp.blurb,
@@ -3777,7 +3777,7 @@ function qspOverview(rows){
     + '</div>';
 
   if (!live.length)
-    return h + '<div class="panel"><div class="empty"><p>Nobody on the QSP register yet.</p>'
+    return h + '<div class="panel"><div class="empty"><p>Nobody on the out-of-school register yet.</p>'
       + '<button class="btn" onclick="qspState.tab=\'register\';render()">Open the register</button> '
       + '<button class="btn ghost" onclick="openImport(\'qsp_students\')">Import the sheet</button></div></div>';
 
@@ -3880,7 +3880,7 @@ async function editQsp(id){
     const d = QSP_FIELDS.find(x => x.k === k);
     return fld('q-' + k, d.h, r[k], type || (d.type === 'number' ? 'number' : undefined));
   };
-  openModal(id ? 'Edit student' : 'Add to the QSP register',
+  openModal(id ? 'Edit student' : 'Add to the out-of-school register',
     '<div class="grid g4">' + f('serial_no') + f('bts_no') + f('local_council') + f('jamatkhana') + '</div>'
     + '<div class="grid g3">' + f('full_name') + f('b_form') + f('area_name') + '</div>'
     + '<div class="grid g4">' + f('father_name') + f('father_cnic') + f('contact') + f('date_of_birth') + '</div>'
@@ -3913,7 +3913,7 @@ async function editQsp(id){
 
 
 /* =====================================================================
-   Tuition Fees — the approved list, and the national council
+   Tuition Fees (QSP) — the approved list, and the national council
    contribution recorded month by month.
    The sheet keeps one column per month; here each month is a row, so a
    new month can be taken from the one before it.
@@ -3969,7 +3969,7 @@ async function pageTuition(v){
   }catch(err){
     const m = String(err && err.message || err);
     if (/does not exist|schema cache|relation/i.test(m)){
-      v.innerHTML = head('Tuition Fees','')
+      v.innerHTML = head('Tuition Fees (QSP)','')
         + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
         + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.<br>'
         + '<span class="mini">' + esc(m) + '</span></div>';
@@ -3981,7 +3981,7 @@ async function pageTuition(v){
   const names = { overview:'Dashboard', register:'Approved list',
                   months:'Monthly contributions', term:'New academic term',
                   activities:'Activities from areas' };
-  let h = head('Tuition Fees \u00b7 ' + (names[tuiState.tab] || ''),
+  let h = head('Tuition Fees (QSP) \u00b7 ' + (names[tuiState.tab] || ''),
     tuiState.tab === 'months'
       ? 'The national council contribution, month by month. A new month can be taken from the one before it.'
       : WORKSPACES.tuition.blurb,
@@ -4546,7 +4546,7 @@ async function exportQsp(){
   const first = k => QSP_FIELDS.findIndex(f => f.k === k) + 1;
   await qspTuiSheet({
     sheetName:'BioData',
-    title:'Quality Schooling Program \u2014 ' + (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction'
+    title:'Out of School \u2014 ' + (SCOPE.area === 'all' || SCOPE.area === 'jurisdiction'
       ? 'Kharadar Region' : areaName(SCOPE.area)),
     groups:[{ from:first('cur_school'), to:first('graduation_year'), label:'Current School data' },
             { from:first('new_school'), to:first('total_yearly'),
@@ -4554,7 +4554,7 @@ async function exportQsp(){
     header:QSP_FIELDS.map(f => f.h),
     widths:QSP_FIELDS.map(f => f.w || 16),
     rows:rows, total:total,
-    filename:'QSP_Out_of_School.xlsx'
+    filename:'Out_of_School.xlsx'
   });
 }
 
@@ -4614,7 +4614,7 @@ async function exportTuition(){
 
   await qspTuiSheet({
     sheetName:'APPROVED LIST',
-    title:'Tuition Fees \u2014 approved list',
+    title:'Tuition Fees (QSP) \u2014 approved list',
     header:fullHeader, widths:fullWidths, rows:rows, total:total,
     filename:'Tuition_Fees_Approved_List.xlsx'
   });
@@ -4634,7 +4634,7 @@ async function exportTuitionMonths(){
   const sum = j => rows.reduce((t,r) => t + (typeof r[j] === 'number' ? r[j] : 0), 0);
   await qspTuiSheet({
     sheetName:MONTHS[m-1] + ' ' + y,
-    title:'Tuition Fees \u2014 national council contribution, ' + MONTHS[m-1] + ' ' + y,
+    title:'Tuition Fees (QSP) \u2014 national council contribution, ' + MONTHS[m-1] + ' ' + y,
     header:['Sr.#','Student Name','B-Form Number','Area','School',
             'NC Contribution','Parent Contribution','LEB Contribution','Paid','Remarks'],
     widths:[7,26,19,16,24,15,15,15,8,26],
@@ -4934,15 +4934,15 @@ const WORKSPACES = {
   },
   qsp: {
     portfolio:'qsp',
-    title:'Out of School (QSP)',
-    blurb:'The Quality Schooling Program register \u2014 children out of school, the school proposed for them, and the support requested.',
+    title:'Out of School',
+    blurb:'The register of children who are out of school \u2014 the school proposed for each of them, and the support being requested.',
     nav:[['overview','Dashboard'],['register','Student register'],['support','Support requested'],
          ['activities','Activities from areas']]
   },
   tuition: {
     portfolio:'tuition',
-    title:'Tuition Fees',
-    blurb:'The approved tuition list, with the national council contribution recorded month by month.',
+    title:'Tuition Fees (QSP)',
+    blurb:'The approved tuition list for the Quality Schooling Program, with the national council contribution recorded month by month.',
     nav:[['overview','Dashboard'],['register','Approved list'],['months','Monthly contributions'],
          ['term','New academic term'],['activities','Activities from areas']]
   },
@@ -6008,9 +6008,9 @@ async function shareContent(kind, id){
   if (kind === 'qsp_register'){
     const list = qspOrder(await qspData()).filter(r => r.status !== 'withdrawn');
     const monthly = list.reduce((t,r) => t + (num(r.total_monthly) || qspMonthly(r)), 0);
-    return { subject:'Out of School (QSP) \u2014 register',
+    return { subject:'Out of School \u2014 register',
       body:['Assalam-o-Alaikum,','',
-        'Quality Schooling Program register'
+        'Out of school register'
           + (SCOPE.area !== 'all' && SCOPE.area !== 'jurisdiction' ? ' \u2014 ' + areaName(SCOPE.area) : '')
           + ':','',
         list.map((r,i) => (i+1) + '. ' + r.full_name
@@ -6030,9 +6030,9 @@ async function shareContent(kind, id){
   if (kind === 'tui_register'){
     const d = await tuiData();
     const list = tuiOrder(d.students.filter(x => x.status !== 'left'));
-    return { subject:'Tuition Fees \u2014 approved list',
+    return { subject:'Tuition Fees (QSP) \u2014 approved list',
       body:['Assalam-o-Alaikum,','',
-        'Tuition fees approved list'
+        'Tuition fees (QSP) approved list'
           + (SCOPE.area !== 'all' && SCOPE.area !== 'jurisdiction' ? ' \u2014 ' + areaName(SCOPE.area) : '')
           + ':','',
         list.map((r,i) => (i+1) + '. ' + r.full_name
@@ -6069,7 +6069,7 @@ async function shareContent(kind, id){
     const live = tuiOrder(d.students.filter(x => x.status !== 'left'));
     const rows = tuiMonthRows(d, m, y);
     const nc = rows.reduce((t,r) => t + num(r.nc_contribution), 0);
-    return { subject:'Tuition Fees \u2014 ' + MONTHS[m-1] + ' ' + y + ' national council contribution',
+    return { subject:'Tuition Fees (QSP) \u2014 ' + MONTHS[m-1] + ' ' + y + ' national council contribution',
       body:['Assalam-o-Alaikum,','',
         'National council contribution for ' + MONTHS[m-1] + ' ' + y + ':','',
         live.map((st,i) => {
@@ -6535,7 +6535,7 @@ function openImport(target, classId){
   IMPORT.target = target;
   IMPORT.classId = classId || null;
   IMPORT.fields = importFields(target);
-  const where = target === 'qsp_students' ? 'the Out of School (QSP) register'
+  const where = target === 'qsp_students' ? 'the out-of-school register'
     : target === 'tuition_students' ? 'the tuition approved list, including any NC CONTR month columns'
     : target === 'tuition_term_approvals' ? 'the new academic term request'
     : target === 'eng_students' ? 'this English class roll'
