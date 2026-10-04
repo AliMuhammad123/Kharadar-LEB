@@ -591,7 +591,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v8.4';
+const APP_VERSION = 'v8.6';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -675,7 +675,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims','qsp_students','tuition_students','tuition_months'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims','qsp_students','tuition_students','tuition_months','tuition_term_approvals'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -3949,10 +3949,11 @@ const TUI_FIELDS = [
 
 async function tuiData(){
   if (!tuiState.data){
-    const [students, months] = await Promise.all([
-      sList('tuition_students'), sList('tuition_months')
+    const [students, months, terms] = await Promise.all([
+      sList('tuition_students'), sList('tuition_months'),
+      sList('tuition_term_approvals').catch(() => [])
     ]);
-    tuiState.data = { students, months };
+    tuiState.data = { students, months, terms };
   }
   return tuiState.data;
 }
@@ -3960,8 +3961,11 @@ async function tuiData(){
 async function pageTuition(v){
   let d;
   try{
-    const [students, months] = await Promise.all([sList('tuition_students'), sList('tuition_months')]);
-    d = { students, months };
+    const [students, months, terms] = await Promise.all([
+      sList('tuition_students'), sList('tuition_months'),
+      sList('tuition_term_approvals').catch(() => [])
+    ]);
+    d = { students, months, terms };
   }catch(err){
     const m = String(err && err.message || err);
     if (/does not exist|schema cache|relation/i.test(m)){
@@ -3975,7 +3979,8 @@ async function pageTuition(v){
   }
   tuiState.data = d;
   const names = { overview:'Dashboard', register:'Approved list',
-                  months:'Monthly contributions', activities:'Activities from areas' };
+                  months:'Monthly contributions', term:'New academic term',
+                  activities:'Activities from areas' };
   let h = head('Tuition Fees \u00b7 ' + (names[tuiState.tab] || ''),
     tuiState.tab === 'months'
       ? 'The national council contribution, month by month. A new month can be taken from the one before it.'
@@ -3986,6 +3991,7 @@ async function pageTuition(v){
   if (tuiState.tab === 'overview')   h += tuiOverview(d);
   if (tuiState.tab === 'register')   h += tuiRegister(d);
   if (tuiState.tab === 'months')     h += tuiMonths(d);
+  if (tuiState.tab === 'term')       h += tuiTerm(d);
   if (tuiState.tab === 'activities') h += await portfolioActivities('tuition');
   h += '</div>';
   v.innerHTML = h;
@@ -3994,6 +4000,11 @@ async function pageTuition(v){
 function tuiActions(){
   const t = tuiState.tab;
   if (t === 'activities' || t === 'overview') return '';
+  if (t === 'term')
+    return '<button class="btn ghost" onclick="openImport(\'tuition_term_approvals\')">Import</button>'
+      + '<button class="btn ghost" onclick="exportTuitionTerm()">Export</button>'
+      + '<button class="btn send" onclick="openShare(\'tui_term\')">Send</button>'
+      + '<button class="btn" onclick="editTuitionTerm()">Add student</button>';
   if (t === 'months')
     return '<button class="btn ghost" onclick="carryTuitionMonth()">Take from previous month</button>'
       + '<button class="btn ghost" onclick="exportTuitionMonths()">Export</button>'
@@ -4335,6 +4346,117 @@ async function importTuitionMonths(saved){
   if (!fresh.length) return 0;
   await db.insertMany('tuition_months', fresh);
   return fresh.length;
+}
+
+
+/* ---------- new academic term: approval for transport and increased fees ---------- */
+const TERM_FIELDS = [
+  { k:'serial_no',      h:'Sr.#', type:'number', w:7 },
+  { k:'full_name',      h:'Student Name', required:true, w:28 },
+  { k:'class_grade',    h:'Class', w:12 },
+  { k:'school',         h:'School', w:16 },
+  { k:'area_name',      h:'Area', w:14 },
+  { k:'admission_type', h:'Admission', w:18 },
+  { k:'amount',         h:'Amount', type:'number', w:12 }
+];
+const termOrder = list => list.slice().sort((a,b) =>
+  (a.serial_no || 9999) - (b.serial_no || 9999) || a.full_name.localeCompare(b.full_name));
+
+function tuiTerm(d){
+  const rows = termOrder(d.terms || []);
+  if (!rows.length)
+    return '<div class="note">This is the workbook\u2019s <b>New academic term</b> sheet \u2014 '
+      + 'approval for transportation and increased fees at the start of a term.</div>'
+      + '<div class="panel"><div class="empty"><p>Nothing requested yet.</p>'
+      + '<button class="btn" onclick="editTuitionTerm()">Add a student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'tuition_term_approvals\')">Import the sheet</button></div></div>';
+
+  const total = rows.reduce((t,r) => t + num(r.amount), 0);
+  const isNew = rows.filter(r => /new/i.test(r.admission_type || '')).length;
+  const approved = rows.filter(r => r.status === 'approved').length;
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Students</div><div class="v">' + rows.length + '</div></div>'
+    + '<div><div class="k">New admissions</div><div class="v">' + isNew + '</div></div>'
+    + '<div><div class="k">Continuing</div><div class="v">' + (rows.length - isNew) + '</div></div>'
+    + '<div><div class="k">Approval sought</div><div class="v">Rs ' + money(total) + '</div></div>'
+    + '</div>';
+  if (approved)
+    h += '<div class="note ok"><b>' + approved + ' of ' + rows.length + ' approved.</b></div>';
+
+  h += '<div class="panel"><div class="body flush">'
+    + tableTools('tbl-term', 'Search\u2026', rows.length + ' students')
+    + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-term">'
+    + '<thead><tr><th class="sn">Sr.#</th><th>Student</th><th>Class</th><th>School</th>'
+    + '<th>Area</th><th>Admission</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>'
+    + rows.map((r,i) => '<tr><td class="sn">' + (r.serial_no || i+1) + '</td>'
+      + '<td>' + esc(r.full_name) + '</td>'
+      + '<td>' + esc(r.class_grade || '\u2014') + '</td>'
+      + '<td>' + esc(r.school || '\u2014') + '</td>'
+      + '<td>' + esc(r.area_name || '\u2014') + '</td>'
+      + '<td>' + (/new/i.test(r.admission_type || '')
+          ? '<span class="tag t-green">New admission</span>'
+          : '<span class="tag t-grey">Previous student</span>') + '</td>'
+      + '<td class="num">' + (num(r.amount) ? money(r.amount) : '\u2014') + '</td>'
+      + '<td>' + (r.status === 'approved' ? '<span class="tag t-green">Approved</span>'
+          : r.status === 'declined' ? '<span class="tag t-red">Declined</span>'
+          : '<span class="tag t-gold">Requested</span>') + '</td>'
+      + '<td style="width:1%;white-space:nowrap"><button class="btn sm ghost" onclick="editTuitionTerm(\'' + r.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delRow(\'tuition_term_approvals\',\'' + r.id + '\')">&times;</button></td></tr>').join('')
+    + '</tbody><tfoot><tr><td></td><td>Total (' + rows.length + ')</td><td colspan="4"></td>'
+    + '<td class="num">Rs ' + money(total) + '</td><td colspan="2"></td></tr></tfoot>'
+    + '</table></div></div></div>';
+  return h;
+}
+
+async function editTuitionTerm(id){
+  const d = await tuiData();
+  const r = id ? (d.terms || []).find(x => x.id === id)
+               : { admission_type:'NEW ADMISSION', status:'requested',
+                   year:new Date().getFullYear(), amount:2500 };
+  openModal(id ? 'Edit request' : 'Add to the new academic term request',
+    '<div class="grid g3">' + fld('m-serial','Sr.#', r.serial_no, 'number')
+    + fld('m-name','Student name', r.full_name)
+    + fld('m-class','Class', r.class_grade) + '</div>'
+    + '<div class="grid g3">' + fld('m-school','School', r.school)
+    + fld('m-area','Area', r.area_name)
+    + sel('m-type','Admission', [['NEW ADMISSION','New admission'],
+        ['PREVIOUS STUDENT','Previous student']], r.admission_type) + '</div>'
+    + '<div class="grid g3">' + fld('m-amount','Amount (Rs)', r.amount, 'number')
+    + fld('m-term','Term', r.term_label)
+    + sel('m-status','Status', [['requested','Requested'],['approved','Approved'],
+        ['declined','Declined']], r.status) + '</div>'
+    + fld('m-remarks','Remarks', r.remarks),
+    async () => {
+      if (!mv('m-name')){ toast('A student name is required'); return; }
+      const row = { serial_no:mv('m-serial') ? num(mv('m-serial')) : null,
+        full_name:mv('m-name'), class_grade:mv('m-class'), school:mv('m-school'),
+        area_name:mv('m-area'), admission_type:mv('m-type'), amount:num(mv('m-amount')),
+        term_label:mv('m-term'), status:mv('m-status'), remarks:mv('m-remarks'),
+        year:r.year || new Date().getFullYear() };
+      id ? await db.update('tuition_term_approvals', id, row)
+         : await db.insert('tuition_term_approvals', stampArea(row));
+      tuiState.data = null;
+      closeModal(); toast('Saved'); render();
+    });
+}
+
+async function exportTuitionTerm(){
+  const d = await tuiData();
+  const rows = termOrder(d.terms || []);
+  if (!rows.length){ toast('Nothing to export'); return; }
+  const body = rows.map((r,i) => [r.serial_no || i+1, r.full_name, r.class_grade || '',
+    r.school || '', r.area_name || '', r.admission_type || '', num(r.amount) || '']);
+  await qspTuiSheet({
+    sheetName:'NEW ACADEMIC TERM',
+    title:'APPROVAL FOR TRANSPORTATION / INCREASED FEES',
+    header:TERM_FIELDS.map(f => f.h),
+    widths:TERM_FIELDS.map(f => f.w),
+    rows:body,
+    total:['', 'Total (' + rows.length + ')', '', '', '', '',
+           rows.reduce((t,r) => t + num(r.amount), 0)],
+    filename:'Tuition_New_Academic_Term.xlsx'
+  });
 }
 
 /* ---------- QSP and Tuition: out to Excel in the board's own layout ---------- */
@@ -4822,7 +4944,7 @@ const WORKSPACES = {
     title:'Tuition Fees',
     blurb:'The approved tuition list, with the national council contribution recorded month by month.',
     nav:[['overview','Dashboard'],['register','Approved list'],['months','Monthly contributions'],
-         ['activities','Activities from areas']]
+         ['term','New academic term'],['activities','Activities from areas']]
   },
   national: {
     portfolio:'national',
@@ -5924,6 +6046,23 @@ async function shareContent(kind, id){
         '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
       attach:'Press Export first if you want to attach the full sheet.' };
   }
+  if (kind === 'tui_term'){
+    const d = await tuiData();
+    const rows = termOrder(d.terms || []);
+    const total = rows.reduce((t,r) => t + num(r.amount), 0);
+    return { subject:'Approval for transportation and increased fees \u2014 new academic term',
+      body:['Assalam-o-Alaikum,','',
+        'Approval is sought for transportation and increased fees for the new academic term:','',
+        rows.map((r,i) => (i+1) + '. ' + r.full_name
+          + (r.class_grade ? ', class ' + r.class_grade : '')
+          + (r.school ? ' \u2014 ' + r.school : '')
+          + (num(r.amount) ? '\n   Rs ' + money(r.amount) : '')
+          + '\n   ' + (/new/i.test(r.admission_type || '') ? 'New admission' : 'Previous student')
+        ).join('\n\n'),
+        '', 'Students: ' + rows.length + '. Total sought: Rs ' + money(total) + '.',
+        '', 'Regards,', ME.name || JURISDICTION_NAME].join('\n'),
+      attach:'Press Export first, then attach the sheet.' };
+  }
   if (kind === 'tui_months'){
     const d = await tuiData();
     const m = tuiState.month, y = tuiState.year;
@@ -6303,6 +6442,17 @@ function wsToGrid(ws){
   for (let i = 0; i < grid.length; i++) if (!grid[i]) grid[i] = [];
   return grid;
 }
+/* Where no row matches the expected headings, the first row carrying
+   several values is treated as the start of the data instead. */
+function firstDataRow(grid){
+  for (let i = 0; i < Math.min(grid.length, 30); i++){
+    const vals = (grid[i] || []).map(v => String(v || '').trim()).filter(Boolean);
+    // a merged title spreads one value across the row, so count distinct ones
+    const distinct = vals.filter((v, j) => vals.indexOf(v) === j).length;
+    if (distinct >= 3) return i;
+  }
+  return 0;
+}
 function detectHeaderRow(grid, labels){
   const want = labels.map(normHead).filter(Boolean);
   let best = { row:0, score:-1 };
@@ -6312,7 +6462,8 @@ function detectHeaderRow(grid, labels){
     cells.forEach(c => { if (want.some(w => c === w || c.indexOf(w) === 0 || w.indexOf(c) === 0)) score++; });
     if (score > best.score) best = { row:i, score:score };
   }
-  return best.score > 0 ? best.row : 0;
+  if (best.score > 0) return best.row;
+  return Math.max(0, firstDataRow(grid) - 1);
 }
 function guessColumn(headerCells, label){
   const want = normHead(label);
@@ -6344,6 +6495,8 @@ function importFields(target){
     return QSP_FIELDS.map(f => ({ k:f.k, h:f.h, type:f.type, required:f.k === 'full_name' }));
   if (target === 'tuition_students')
     return TUI_FIELDS.map(f => ({ k:f.k, h:f.h, type:f.type, required:f.k === 'full_name' }));
+  if (target === 'tuition_term_approvals')
+    return TERM_FIELDS.map(f => ({ k:f.k, h:f.h, type:f.type, required:f.k === 'full_name' }));
   if (target === 'afghan_students') return [
     { k:'full_name',   h:'Student Name', required:true },
     { k:'father_name', h:'Father / Guardian' },
@@ -6384,6 +6537,7 @@ function openImport(target, classId){
   IMPORT.fields = importFields(target);
   const where = target === 'qsp_students' ? 'the Out of School (QSP) register'
     : target === 'tuition_students' ? 'the tuition approved list, including any NC CONTR month columns'
+    : target === 'tuition_term_approvals' ? 'the new academic term request'
     : target === 'eng_students' ? 'this English class roll'
     : target === 'afghan_students' ? 'the Oklife School roll'
     : target === 'ace_teachers' ? 'the ACE teacher register'
@@ -6429,8 +6583,21 @@ function setHeaderRow(n){ IMPORT.headerRow = Math.max(0, (+n) - 1); drawImport()
 function drawImport(){
   const grid = IMPORT.grid, hr = IMPORT.headerRow;
   const header = grid[hr] || [];
-  const colOpts = i => '<option value="-1">\u2014 skip \u2014</option>' + header.map((h,ci) =>
-    '<option value="' + ci + '"' + (ci === i ? ' selected' : '') + '>' + esc(colLetter(ci) + (h ? ' \u00b7 ' + h : '')) + '</option>').join('');
+  // Some sheets carry no heading row. Where a heading is blank, the first
+  // value underneath is offered instead, so a column can still be placed.
+  const sampleAt = ci => {
+    for (let r = hr + 1; r < Math.min(grid.length, hr + 14); r++){
+      const v = (grid[r] || [])[ci];
+      if (v && String(v).trim()) return String(v).trim().slice(0, 22);
+    }
+    return '';
+  };
+  const colOpts = i => '<option value="-1">\u2014 skip \u2014</option>' + header.map((h, ci) => {
+    const sample = sampleAt(ci);
+    const label = h ? '  \u00b7 ' + h : (sample ? '  \u00b7 e.g. ' + sample : '');
+    return '<option value="' + ci + '"' + (ci === i ? ' selected' : '') + '>'
+      + esc(colLetter(ci) + label) + '</option>';
+  }).join('');
 
   let h = '<div class="grid g2">'
     + '<div class="field"><label for="imp-sheet">Worksheet</label><select id="imp-sheet" onchange="pickSheet(this.value)">'
@@ -6440,9 +6607,15 @@ function drawImport(){
     + '<input id="imp-hrow" type="number" min="1" value="' + (hr+1) + '" onchange="setHeaderRow(this.value)">'
     + '<p class="mini">Row ' + (hr+1) + ' reads: ' + esc(header.filter(Boolean).slice(0,6).join(' \u00b7 ') || '(blank)') + '</p></div></div>';
 
+  const named = header.filter(Boolean).length;
+  const anyMatch = IMPORT.fields.some(f => guessColumn(header, f.h) >= 0);
   h += '<h4 class="serif" style="margin:14px 0 8px">Which column is which</h4>';
-  h += '<div class="grid g2">' + IMPORT.fields.map(f => {
-    const guess = guessColumn(header, f.h);
+  if (!named || !anyMatch)
+    h += '<div class="note">This sheet has no heading row that matches, so the columns are offered '
+      + 'in order with a sample value from each. Check them before importing, and change the header '
+      + 'row above if the sheet does have headings.</div>';
+  h += '<div class="grid g2">' + IMPORT.fields.map((f, fi) => {
+    const guess = (!named || !anyMatch) ? (fi < header.length ? fi : -1) : guessColumn(header, f.h);
     return '<div class="field"><label for="map-' + f.k + '">' + esc(f.h) + (f.required ? ' (required)' : '') + '</label>'
       + '<select id="map-' + f.k + '" onchange="drawPreview()">' + colOpts(guess) + '</select></div>';
   }).join('') + '</div>';
@@ -6463,7 +6636,7 @@ function collectImport(){
   const map = {};
   IMPORT.fields.forEach(f => { const el = $('map-' + f.k); map[f.k] = el ? +el.value : -1; });
   const nameKey = ['students','ace_teachers','ace_students','afghan_students','eng_students',
-                   'qsp_students','tuition_students']
+                   'qsp_students','tuition_students','tuition_term_approvals']
     .indexOf(IMPORT.target) >= 0 ? 'full_name' : 'student_name';
   const rows = [];
   for (let i = IMPORT.headerRow + 1; i < IMPORT.grid.length; i++){
@@ -6518,6 +6691,16 @@ function drawPreview(){
 async function runImport(){
   const rows = collectImport();
   if (!rows.length){ toast('Nothing to import \u2014 check the column mapping'); return; }
+
+  if (IMPORT.target === 'tuition_term_approvals'){
+    const fresh = rows.map(r => stampArea(Object.assign({}, r, {
+      status:'requested', year:new Date().getFullYear(),
+      admission_type: /previous/i.test(String(r.admission_type || '')) ? 'PREVIOUS STUDENT' : 'NEW ADMISSION'
+    }))).filter(r => r.full_name);
+    await db.insertMany('tuition_term_approvals', fresh);
+    tuiState.data = null;
+    closeModal(); toast(fresh.length + ' rows imported'); render(); return;
+  }
 
   if (IMPORT.target === 'qsp_students' || IMPORT.target === 'tuition_students'){
     const defs = importFields(IMPORT.target);
