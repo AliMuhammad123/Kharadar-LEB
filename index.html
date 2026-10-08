@@ -14,9 +14,15 @@
 <title>Aga Khan Education Board for Kharadar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<!-- The font is fetched without holding up the first paint: the page draws
+     immediately in the system font and swaps to Inter when it arrives. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <script src="config.js" onerror="window.LEB_CONFIG_404=true"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- deferred: the page draws before this arrives, and boot() waits for it. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --ease:cubic-bezier(.22,1,.36,1);
@@ -461,10 +467,25 @@ tr.hidden-row{display:none}
 @keyframes pulse{50%{opacity:.3}}
 
 /* ============ reveal ============ */
-.reveal{opacity:0;transform:translateY(8px)}
-.reveal.in{opacity:1;transform:none;
-  transition:opacity 380ms var(--ease),transform 380ms var(--ease)}
-html:not(.js) .reveal{opacity:1;transform:none}
+/* One short fade over the whole view. Panels used to come in one after
+   another, which looked pleasant once and felt slow every time after. */
+@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+#view.fade-in{animation:viewIn 150ms var(--ease) both}
+/* kept so older markup never ends up invisible */
+.reveal,.reveal.in{opacity:1;transform:none}
+
+/* the view stays readable while the next screen loads, just stepped back */
+#view.stale{opacity:.55;transition:opacity 120ms var(--ease);pointer-events:none}
+
+/* ============ progress bar ============ */
+#progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:80;
+  background:transparent;opacity:0;transition:opacity 120ms var(--ease);
+  pointer-events:none}
+#progress.on{opacity:1}
+#progress::before{content:'';display:block;height:100%;width:40%;
+  background:linear-gradient(90deg,transparent,var(--accent-2),transparent)}
+#progress.on::before{animation:slide 900ms linear infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(350%)}}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{
@@ -472,6 +493,8 @@ html:not(.js) .reveal{opacity:1;transform:none}
     transition-duration:.01ms !important;
   }
   .reveal{opacity:1 !important;transform:none !important}
+  #view.fade-in{animation:none}
+  #progress.on::before{animation:none;width:100%}
 }
 </style>
 </head>
@@ -579,6 +602,7 @@ html:not(.js) .reveal{opacity:1;transform:none}
 </div>
 </div>
 
+<div id="progress"></div>
 <div id="toast"></div>
 <div id="saving"><span class="dot"></span><span id="saving-txt">Saving</span></div>
 
@@ -615,7 +639,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v8.8';
+const APP_VERSION = 'v8.9';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -665,6 +689,10 @@ let sb = null, LOCAL = true, ME = { id:null, name:'', role:'chairperson',
   area_id:null, portfolio_id:null, finance_access:true };
 let BOOT_ERROR = '';
 
+/* Called by boot(), not at parse time: the Supabase library is fetched
+   with `defer` so it no longer holds up the first paint, which means it
+   is not there yet while this script is being read. */
+function connectSupabase(){
 if (SUPABASE_URL && SUPABASE_ANON_KEY){
   if (typeof supabase === 'undefined' || !supabase.createClient){
     BOOT_ERROR = 'The Supabase library did not load. Check your internet connection, and whether '
@@ -685,6 +713,7 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY){
       LOCAL = false;
     }catch(e){ BOOT_ERROR = 'Could not connect to Supabase: ' + e.message; }
   }
+}
 }
 
 // Anything that breaks after this point says so on screen rather than dying quietly.
@@ -870,6 +899,44 @@ function resetLocal(){
 
 const uid = () => 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
+/* ---------------------------------------------------------------------
+   Read cache.
+
+   Every screen used to re-download its tables on every tab click — the
+   Afghan dashboard pulled nine tables each time you moved between its
+   tabs, and ACE six. That is what made the app feel slow, not the size
+   of the data.
+
+   So reads are kept here, and the whole cache is thrown away the moment
+   anything is written. That is deliberately blunt: a save is rare, a tab
+   click is constant, and emptying everything means a saved figure can
+   never be shown stale anywhere. Writes all pass through db.insert /
+   update / remove below, so there is one place to forget, and it is
+   covered.
+
+   Rows are handed out as copies so that a page sorting its list in place
+   cannot disturb what the next page reads.
+   --------------------------------------------------------------------- */
+const CACHE = { store:new Map(), waiting:new Map(), states:[], hits:0, miss:0, busts:0 };
+function cacheKey(table, filter){
+  return table + '|' + (filter ? JSON.stringify(filter) : '');
+}
+function cacheCopy(rows){
+  const out = new Array(rows.length);
+  for (let i = 0; i < rows.length; i++) out[i] = Object.assign({}, rows[i]);
+  return out;
+}
+/* Called after every write. Also drops the per-page caches that the
+   dashboards keep, so the next render rebuilds them from fresh reads.
+   The dashboards add themselves to CACHE.states where they are declared,
+   rather than being named here, so a new dashboard cannot be missed and
+   nothing is referenced before it exists. */
+function cacheBust(){
+  CACHE.busts++;
+  CACHE.store.clear();
+  for (const st of CACHE.states) st.data = null;
+}
+
 const db = {
   async list(table, filter){
     if (LOCAL){
@@ -877,13 +944,27 @@ const db = {
       if (filter) for (const k in filter) rows = rows.filter(r => r[k] === filter[k]);
       return rows;
     }
+    const key = cacheKey(table, filter);
+    const hit = CACHE.store.get(key);
+    if (hit){ CACHE.hits++; return cacheCopy(hit); }
     let q = sb.from(table).select('*');
     if (filter) for (const k in filter) q = q.eq(k, filter[k]);
-    const { data, error } = await q;
-    if (error) throw error;
-    return data || [];
+    const inflight = CACHE.waiting.get(key);
+    if (inflight) return cacheCopy(await inflight);
+    CACHE.miss++;
+    const p = q.then(({ data, error }) => {
+      if (error) throw error;
+      return data || [];
+    });
+    CACHE.waiting.set(key, p);
+    let rows;
+    try{ rows = await p; }
+    finally{ CACHE.waiting.delete(key); }
+    CACHE.store.set(key, rows);
+    return cacheCopy(rows);
   },
   async insert(table, row){
+    cacheBust();
     if (LOCAL){
       const r = Object.assign({ id: uid(), created_at: new Date().toISOString() }, row);
       mem[table].push(r); saveLocal(); return r;
@@ -894,6 +975,7 @@ const db = {
   // One round trip for many rows, instead of one per row.
   async insertMany(table, rows){
     if (!rows.length) return [];
+    cacheBust();
     if (LOCAL){
       const out = rows.map(r => Object.assign({ id: uid(), created_at: new Date().toISOString() }, r));
       mem[table] = mem[table].concat(out); saveLocal(); return out;
@@ -905,16 +987,24 @@ const db = {
   async listIn(table, key, values){
     if (!values.length) return [];
     if (LOCAL) return (mem[table] || []).filter(r => values.indexOf(r[key]) >= 0);
+    const ck = cacheKey(table, { __in:key, v:values.slice().sort() });
+    const hit = CACHE.store.get(ck);
+    if (hit){ CACHE.hits++; return cacheCopy(hit); }
+    CACHE.miss++;
     const { data, error } = await sb.from(table).select('*').in(key, values);
-    if (error) throw error; return data || [];
+    if (error) throw error;
+    CACHE.store.set(ck, data || []);
+    return cacheCopy(data || []);
   },
   async removeMany(table, ids){
     if (!ids.length) return;
+    cacheBust();
     if (LOCAL){ mem[table] = (mem[table] || []).filter(x => ids.indexOf(x.id) < 0); saveLocal(); return; }
     const { error } = await sb.from(table).delete().in('id', ids);
     if (error) throw error;
   },
   async update(table, id, patch){
+    cacheBust();
     if (LOCAL){
       const r = (mem[table] || []).find(x => x.id === id);
       if (!r) throw new Error('Record not found');
@@ -924,6 +1014,7 @@ const db = {
     if (error) throw error; return data;
   },
   async remove(table, id){
+    cacheBust();
     if (LOCAL){
       mem[table] = (mem[table] || []).filter(x => x.id !== id);
       if (table === 'fee_cycles') mem.fee_entries = mem.fee_entries.filter(e => e.cycle_id !== id);
@@ -945,6 +1036,9 @@ const todayISO = () => new Date().toISOString().slice(0,10);
 const daysBetween = (a,b) => Math.round((new Date(b) - new Date(a)) / 86400000);
 const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
 const quarterOf = m => Math.floor((m-1)/3) + 1;
+/* 'school_fee' -> 'school fee'. Tolerates a blank, which an import of a
+   sheet with an empty category column will produce. */
+const words = v => String(v == null ? '' : v).replace(/_/g, ' ');
 
 function toast(msg, actionLabel, action){
   const t = $('toast');
@@ -4898,15 +4992,23 @@ document.addEventListener('keydown', e => {
 document.documentElement.classList.add('js');
 const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/* The page used to fade its panels in one after another, which added up
+   to more than half a second of waiting on every single click before the
+   screen was readable. One short fade over the whole view reads as
+   smooth without making anybody wait for it. */
 function animateIn(root){
   if (REDUCED) return;
-  const bits = root.querySelectorAll('.panel, .stats, .fund-stats');
-  bits.forEach((el,i) => {
-    el.classList.add('reveal');
-    setTimeout(() => el.classList.add('in'), 15 + Math.min(i,4) * 45);
-  });
-  // Nothing stays invisible if a timer is ever dropped.
-  setTimeout(() => bits.forEach(el => el.classList.add('in')), 700);
+  root.classList.remove('fade-in');
+  // force the class to take effect again on a repeat render
+  void root.offsetWidth;
+  root.classList.add('fade-in');
+}
+
+/* The thin bar at the top of the screen, shown only when a wait is long
+   enough to be worth acknowledging. */
+function busy(on){
+  const el = $('progress');
+  if (el) el.classList.toggle('on', !!on);
 }
 
 /* =====================================================================
@@ -5050,6 +5152,9 @@ const engState = { tab:'overview', term:1, year:new Date().getFullYear(), classI
 const natState = { tab:'overview', kind:'transport', year:new Date().getFullYear() };
 const qspState = { tab:'overview' };
 const tuiState = { tab:'overview', month:new Date().getMonth()+1, year:new Date().getFullYear() };
+
+/* Each dashboard holds its own loaded copy; a write clears them all. */
+CACHE.states.push(aceState, afgState, engState, natState, qspState, tuiState);
 function wsSetTab(key, tab){
   if (key === 'afghan')        afgState.tab = tab;
   else if (key === 'national') natState.tab = tab;
@@ -5207,7 +5312,14 @@ async function render(){
   const v = $('view');
   if (workspace === 'home') page = 'home';
   else if (workspace === 'area' && !pageAllowed(page)) page = 'dash';
-  v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
+  /* The old screen stays put while the new one loads. Blanking it to
+     "Loading…" on every click made each move feel like a page reload,
+     even when the data was already in hand. A thin bar appears only if
+     the wait is long enough to notice. */
+  const first = !v.innerHTML;
+  if (first) v.innerHTML = '<p style="color:var(--muted)">Loading…</p>';
+  const slow = setTimeout(() => { busy(true); v.classList.add('stale'); }, 140);
+  const settle = () => { clearTimeout(slow); busy(false); v.classList.remove('stale'); };
   try{
     if (page === 'dash')      await pageDash(v);
     if (page === 'areas')     await pageAreas(v);
@@ -5238,6 +5350,8 @@ async function render(){
   }catch(err){
     console.error(err);
     v.innerHTML = '<div class="note warn"><b>Could not load this page.</b><br>' + esc(err.message || err) + '</div>';
+  }finally{
+    settle();
   }
   animateIn(v);
 }
@@ -5321,7 +5435,7 @@ async function pageDash(v){
   h += '<div class="grid g2">';
   h += '<div class="panel" style="margin:0"><h2>Latest cases</h2><div class="body flush">'
     + (cases.length ? '<table class="ledger"><tbody>' + cases.slice().sort((a,b)=>b.meeting_date.localeCompare(a.meeting_date)).slice(0,6).map(c =>
-        '<tr><td>' + esc(c.applicant_name) + '<div class="mini">' + fmtDate(c.meeting_date) + ' · ' + esc(c.category.replace('_',' ')) + '</div></td>'
+        '<tr><td>' + esc(c.applicant_name) + '<div class="mini">' + fmtDate(c.meeting_date) + ' · ' + esc(words(c.category)) + '</div></td>'
         + '<td class="num">' + (num(c.amount_requested) ? 'Rs ' + money(c.amount_requested) : '—') + '</td>'
         + '<td style="width:1%">' + decisionTag(c.decision) + '</td></tr>').join('') + '</tbody></table>'
       : '<div class="empty"><p>No cases logged yet.</p><button class="btn" onclick="go(\'cases\')">Log a case</button></div>')
@@ -6916,7 +7030,7 @@ async function pageCases(v){
       + '<th class="num">Amount</th><th>Board recommendation</th><th>Decision</th><th></th></tr></thead><tbody>'
       + list.map((c,i) => '<tr><td class="sn">' + esc(c.case_no || (i+1)) + '</td>'
         + '<td>' + esc(c.applicant_name) + (c.contact ? '<div class="mini">' + esc(c.contact) + '</div>' : '') + '</td>'
-        + '<td>' + esc(c.student_name || '—') + '<div class="mini">' + esc(c.category.replace('_',' ')) + '</div></td>'
+        + '<td>' + esc(c.student_name || '—') + '<div class="mini">' + esc(words(c.category)) + '</div></td>'
         + '<td style="max-width:280px">' + esc(c.request_summary || '—') + '</td>'
         + '<td class="num">' + (num(c.amount_requested) ? money(c.amount_requested) : '—') + '</td>'
         + '<td style="max-width:240px">' + esc(c.board_recommendation || '—') + '</td>'
@@ -7843,7 +7957,8 @@ function startApp(){
   drawNav(); render();
 }
 
-(async function boot(){
+async function boot(){
+  connectSupabase();
   if (LOCAL){
     loadLocal();
     ME = { id:'local', name:'Board member', role:'chairperson',
@@ -7890,7 +8005,12 @@ function startApp(){
     gateMsg('That reset link has expired or has already been used. '
       + 'Choose "Forgot your password?" to get a fresh one.', true);
   }
-})();
+}
+
+/* Deferred scripts finish before DOMContentLoaded, so waiting for it is
+   what guarantees the Supabase library is in place when boot runs. */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
 </script>
 </body>
 </html>
