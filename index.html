@@ -395,6 +395,30 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
 .send-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;padding-top:18px;border-top:1px solid var(--line)}
 .send-row .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px}
 
+/* ---- who a message is going to ---- */
+.chips{display:flex;flex-wrap:wrap;gap:7px;min-height:38px;align-items:center;
+  padding:7px 8px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:5px 7px 5px 11px;
+  border-radius:7px;background:var(--hover);border:1px solid var(--line);
+  font-size:13px;font-weight:500;line-height:1.2}
+.chip .mini{margin:0;opacity:.7;font-weight:400}
+.chip button{border:none;background:none;cursor:pointer;color:var(--muted);
+  font-size:15px;line-height:1;padding:2px 3px;border-radius:4px}
+.chip button:hover{background:var(--line);color:var(--red)}
+
+.picklist{display:flex;flex-wrap:wrap;gap:7px;max-height:168px;overflow:auto;
+  padding:2px 1px}
+.picklist button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  text-align:left;padding:7px 12px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:500;
+  color:var(--text);transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}
+.picklist button .mini{margin:0;font-weight:400}
+.picklist button:hover{border-color:var(--line-2);background:var(--hover)}
+.picklist button.on{border-color:var(--accent-2);background:var(--hover)}
+.picklist button.on::after{content:'\2713';position:absolute;margin:-4px 0 0 -8px;
+  color:var(--accent-2);font-size:12px;font-weight:700}
+.picklist button{position:relative}
+
 /* ============ mobile ============ */
 .topbar{display:none;align-items:center;gap:14px;padding:12px 16px;
   background:var(--nav);color:#fff;position:sticky;top:0;z-index:40}
@@ -639,7 +663,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v8.9';
+const APP_VERSION = 'v9.0';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -682,7 +706,8 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const SHEETS = {
   pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive' },
   tuition:         { label:'Tuition fees',                      short:'Tuition' },
-  university:      { label:'University & others',               short:'University & others' }
+  university:      { label:'University & others',               short:'University & others' },
+  other_support:   { label:'Other support matters',             short:'Other support' }
 };
 
 let sb = null, LOCAL = true, ME = { id:null, name:'', role:'chairperson',
@@ -728,7 +753,7 @@ window.addEventListener('error', e => {
    Without it, the app runs on this browser's own storage so that adding
    and deleting behave exactly as they will once the database is wired up.
    --------------------------------------------------------------------- */
-const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims','qsp_students','tuition_students','tuition_months','tuition_term_approvals'];
+const TABLES = ['profiles','students','fee_cycles','fee_entries','cases','programs','prf_requests','quarterly_reports','donations','disbursements','contacts','areas','portfolios','directives','directive_reads','ace_teachers','ace_classes','ace_students','ace_sessions','ace_attendance','ace_assessments','ace_trainings','ace_training_attendance','afghan_students','afghan_fees','afghan_support','afghan_results','eng_classes','eng_students','eng_sessions','eng_attendance','eng_results','national_claims','qsp_students','tuition_students','tuition_months','tuition_term_approvals','morning_students','morning_teachers','morning_salaries','program_participants'];
 
 /* ---------------------------------------------------------------------
    The organisation.
@@ -788,7 +813,9 @@ const roleName = r => ((ROLES.find(x => x[0] === r) || [])[1] || r);
 const PORTFOLIO_TABLES = ['programs','prf_requests','donations','disbursements','quarterly_reports'];
 /* Which records carry an area. */
 const AREA_TABLES = ['students','fee_cycles','cases','programs','prf_requests',
-                     'quarterly_reports','donations','disbursements'];
+                     'quarterly_reports','donations','disbursements',
+                     'morning_students','morning_teachers','morning_salaries',
+                     'program_participants'];
 
 /* SCOPE.area: 'all' | 'jurisdiction' | an area id.  SCOPE.portfolio: 'all' | a portfolio id. */
 let SCOPE = { area:'kharadar', portfolio:'all' };
@@ -1813,6 +1840,10 @@ function aceRegister(d){
     + '<select style="width:92px" onchange="aceState.year=+this.value;redrawRegister()">'
       + years.map(y => '<option' + (aceState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
     + '</select>'
+    /* A roll gains pupils all through the term, so adding one belongs
+       here on the register and not only on the classes tab. */
+    + '<button class="btn sm" onclick="editAceStudent(null,\'' + cls.id + '\')">Add student</button>'
+    + '<button class="btn sm ghost" onclick="openImport(\'ace_students\',\'' + cls.id + '\')">Import</button>'
     + '<button class="btn sm" onclick="addAceDate()">Add a date</button>'
     + '<button class="btn sm send" onclick="openShare(\'ace_attendance\')">Send</button>'
     + '<button class="btn sm gold" onclick="exportAceAttendance()">Download sheet</button>'
@@ -5019,6 +5050,7 @@ const PAGES = [
   { id:'cases',    label:'Jamati member cases'    },
   { id:'fees',     label:'Fees matters'           },
   { id:'ace_area', label:'ACE Classes'            },
+  { id:'morning',  label:'Morning tuition', areaFn:'morningAllowed' },
   { id:'programs', label:'Activities'             },
   { id:'prf',      label:'Permission programmes'  },
   { id:'report',   label:'Quarter reports'        },
@@ -5258,6 +5290,8 @@ function pageAllowed(id){
   if (p.financeOnly && !canFinance()) return false;
   if (p.peopleOnly && (LOCAL || !canManagePeople())) return false;
   if (p.jurisdictionOnly && !(LOCAL || isParentBody())) return false;
+  /* Some screens only belong to the areas that actually run the thing. */
+  if (p.areaFn === 'morningAllowed' && !morningAllowed()) return false;
   return true;
 }
 
@@ -5338,6 +5372,7 @@ async function render(){
     if (page === 'cases')     await pageCases(v);
     if (page === 'ace')       await pageAce(v);
     if (page === 'ace_area')  await pageAce(v);
+    if (page === 'morning')   await pageMorning(v);
     if (page === 'afghan')    await pageAfghan(v);
     if (page === 'national')  await pageNational(v);
     if (page === 'qsp')       await pageQsp(v);
@@ -5495,6 +5530,19 @@ const COLS = {
     { k:'student_name',     h:'Name of Students', w:'36%' },
     { k:'school',           h:'Institution',      w:'36%' },
     { k:'leb_contribution', h:'LEB contribution', w:'18%', type:'number' }
+  ],
+  /* Everything the board supports that is not one of the three monthly
+     sheets: annual fees, books and copies, uniforms, examination fees
+     and the one-off cases that do not fit anywhere else. */
+  other_support: [
+    { k:'student_name',     h:'Name of Student',   w:'24%' },
+    { k:'school',           h:'School / Institution', w:'22%' },
+    { k:'remarks',          h:'Kind of support',   w:'20%', type:'select',
+      opts:['Annual fees','Books & copies','Uniform','Examination fees',
+            'Stationery','Transport','Other'] },
+    { k:'leb_contribution', h:'LEB contribution',  w:'16%', type:'number' },
+    { k:'status',           h:'Status',            w:'14%', type:'select',
+      opts:['Paid','Unpaid','Pending'] }
   ]
 };
 const totalKey = s => s === 'pak_progressive' ? 'fee_amount' : 'leb_contribution';
@@ -5548,8 +5596,9 @@ async function pageFees(v){
      + '</div>' + sheetTable(feeState.sheet, locked) + '</div></div>';
 
   h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v" id="tot-pak">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
-     + '<div><div class="k">Tuition — LEB share</div><div class="v" id="tot-tui">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
+     + '<div><div class="k">Tuition \u2014 LEB share</div><div class="v" id="tot-tui">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
      + '<div><div class="k">University &amp; others</div><div class="v" id="tot-uni">Rs ' + money(sheetTotal('university')) + '</div></div>'
+     + '<div><div class="k">Other support</div><div class="v" id="tot-oth">Rs ' + money(sheetTotal('other_support')) + '</div></div>'
      + '<div><div class="k">Month total</div><div class="v" id="tot-grand">Rs ' + money(grand) + '</div></div></div>';
   v.innerHTML = h;
 }
@@ -5644,6 +5693,7 @@ function refreshTotals(){
   put('tot-pak', sheetTotal('pak_progressive'));
   put('tot-tui', sheetTotal('tuition'));
   put('tot-uni', sheetTotal('university'));
+  put('tot-oth', sheetTotal('other_support'));
   put('tot-grand', feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0));
 }
 async function delEntry(id){
@@ -5782,6 +5832,36 @@ async function exportWorkbook(){
     tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
   }
 
+  /* ---- Sheet 4 : Other support matters ----
+     Only written when there is something on it, so the workbook the board
+     already knows does not grow an empty tab every month. */
+  {
+    const rows = rowsOf('other_support');
+    if (rows.length){
+      const ws = wb.addWorksheet(name('Other Support - ' + M + ' ' + Y));
+      setW(ws, { A:8, B:46, C:38, D:26, E:22, F:18 });
+      title(ws, 'A1', 'A1:F1', 'Other Support Matters', 14);
+      title(ws, 'A2', 'A2:F2', M + ' ' + Y, 14);
+      ['S.No','Name of Student','School / Institution','Kind of support','LEB contribution','Status']
+        .forEach((t,i) => headCell(ws, columnLetter(i+1) + '3', t, 14));
+      rows.forEach((e,i) => {
+        const r = 4 + i;
+        put(ws, 'A'+r, i+1);
+        put(ws, 'B'+r, e.student_name || '');
+        put(ws, 'C'+r, e.school || '');
+        put(ws, 'D'+r, e.remarks || '');
+        put(ws, 'E'+r, num(e.leb_contribution) || null, { fmt:'#,##0' });
+        put(ws, 'F'+r, e.status || '');
+      });
+      const tr = 4 + rows.length;
+      put(ws, 'D'+tr, 'TOTAL', { bold:true });
+      const tot = ws.getCell('E'+tr);
+      tot.value = { formula:'SUM(E4:E' + (tr-1) + ')' };
+      tot.font = { size:14, bold:true }; tot.numFmt = '#,##0';
+      tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+    }
+  }
+
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
            M + ' - LEB ' + Y + '.xlsx');
@@ -5806,7 +5886,9 @@ const FUND_CATS = {
   transport_misc:'ACE transport & misc',
   other:'Other support'
 };
-const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university' };
+const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university', other_support:'other' };
+const SHEET_KEYS = Object.keys(SHEETS);
+const sheetSum = (perMonth, k) => perMonth.reduce((s,m) => s + (m.bySheet[k] || 0), 0);
 const PAY_MODES = ['Cash','Bank transfer','Cheque','Online','In kind'];
 
 const fundState = { year:new Date().getFullYear(), scope:'year', includeSheets:true };
@@ -6466,6 +6548,74 @@ async function shareContent(kind, id){
         '', 'The full report is attached.'].concat(sign).join('\n'),
       attach:'Press Download Word first, then attach the report to the email.' };
   }
+  if (kind === 'morning_students'){
+    const d = await morningData();
+    const live = mornOrder(d.students.filter(x => x.status !== 'left'));
+    const fees = live.reduce((t,x) => t + num(x.monthly_fee), 0);
+    return { subject:'Morning tuition \u2014 student roll',
+      body:['Assalam-o-Alaikum,','',
+        'Morning tuition roll \u2014 ' + areaName(SCOPE.area) + ':','',
+        live.map((x,i) => (i+1) + '. ' + x.full_name
+          + (num(x.age) ? ', age ' + num(x.age) : '')
+          + (x.class_grade ? ', class ' + x.class_grade : '')
+          + (num(x.monthly_fee) ? ' \u2014 ' + rs(x.monthly_fee) + ' a month' : '')).join('\n'),
+        '', 'On the roll: ' + live.length,
+        'Fees due each month: ' + rs(fees)].concat(sign).join('\n') };
+  }
+  if (kind === 'morning_teachers'){
+    const d = await morningData();
+    const live = d.teachers.filter(x => x.status !== 'left');
+    const bill = live.reduce((t,x) => t + num(x.monthly_salary), 0);
+    const money = canFinance();
+    return { subject:'Morning tuition \u2014 teachers',
+      body:['Assalam-o-Alaikum,','',
+        'Morning tuition teachers \u2014 ' + areaName(SCOPE.area) + ':','',
+        live.map((x,i) => (i+1) + '. ' + x.full_name
+          + (x.subject ? ' \u2014 ' + x.subject : '')
+          + (money && num(x.monthly_salary) ? ' \u2014 ' + rs(x.monthly_salary) + ' a month' : '')).join('\n'),
+        '', 'Teachers: ' + live.length]
+        .concat(money ? ['Salary bill each month: ' + rs(bill)] : [])
+        .concat(sign).join('\n') };
+  }
+  if (kind === 'morning_salary'){
+    const d = await morningData();
+    const m = morningState.month, y = morningState.year;
+    const live = d.teachers.filter(x => x.status !== 'left');
+    const rows = live.map(t => {
+      const sal = morningSalaryRow(d, t.id, m, y);
+      return { t:t, amount: sal ? num(sal.amount) : num(t.monthly_salary), paid: !!(sal && sal.paid) };
+    });
+    const due = rows.reduce((x,r) => x + r.amount, 0);
+    return { subject:'Morning tuition salary \u2014 ' + MONTHS[m-1] + ' ' + y,
+      body:['Assalam-o-Alaikum,','',
+        'Morning tuition teacher salary for ' + MONTHS[m-1] + ' ' + y + ':','',
+        rows.map((r,i) => (i+1) + '. ' + r.t.full_name + ' \u2014 ' + rs(r.amount)
+          + (r.paid ? ' (paid)' : ' (due)')).join('\n'),
+        '', 'Total: ' + rs(due)].concat(sign).join('\n'),
+      attach:'Press Slip or All slips first, then attach the salary slips.' };
+  }
+  if (kind === 'program_participants'){
+    const pid = id;
+    const [progs, people] = await Promise.all([
+      sList('programs'), db.list('program_participants', { program_id:pid })
+    ]);
+    const p = progs.find(x => x.id === pid);
+    const list = people.slice().sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+    const fees = list.reduce((t,x) => t + num(x.fee), 0);
+    const got  = list.filter(x => x.paid).reduce((t,x) => t + num(x.fee), 0);
+    return { subject:(p ? p.title : 'Programme') + ' \u2014 participants',
+      body:['Assalam-o-Alaikum,','',
+        'People registered for ' + (p ? p.title : 'the programme')
+          + (p && p.start_date ? ', starting ' + fmtDate(p.start_date) : '') + ':','',
+        list.map((x,i) => (i+1) + '. ' + x.full_name
+          + (num(x.age) ? ', age ' + num(x.age) : '')
+          + (x.whatsapp ? ', ' + x.whatsapp : '')
+          + (num(x.fee) ? ' \u2014 ' + rs(x.fee) + (x.paid ? ' paid' : ' unpaid') : '')).join('\n'),
+        '', 'Registered: ' + list.length,
+        'Fees due: ' + rs(fees),
+        'Fees received: ' + rs(got),
+        'Outstanding: ' + rs(fees - got)].concat(sign).join('\n') };
+  }
   if (kind === 'funds'){
     const d = await fundData();
     return { subject:'Funds statement \u2014 ' + d.R.label,
@@ -6474,6 +6624,13 @@ async function shareContent(kind, id){
         'Received from donors: ' + rs(d.totalIn),
         'Delivered to students: ' + rs(d.totalOut),
         (d.balance < 0 ? 'Short by: ' : 'Still in hand: ') + rs(Math.abs(d.balance)),
+        /* Named, because a donor should be thanked by name and the board
+           should be able to see at a glance who gave what. */
+        '', 'Received from:',
+        (Object.keys(d.byDonor).length
+          ? Object.keys(d.byDonor).sort((a,b) => d.byDonor[b] - d.byDonor[a])
+              .map(nm => '  ' + nm + ': ' + rs(d.byDonor[nm])).join('\n')
+          : '  (no receipts recorded for this period)'),
         '', 'By kind of support:',
         Object.keys(d.byCat).sort((a,b) => d.byCat[b] - d.byCat[a])
           .map(c => '  ' + (FUND_CATS[c] || c) + ': ' + rs(d.byCat[c])).join('\n'),
@@ -6483,30 +6640,113 @@ async function shareContent(kind, id){
   return { subject:'', body:'' };
 }
 
+/* ---------------------------------------------------------------------
+   Sending.
+
+   A message usually goes to more than one person — the chairperson and
+   the secretary, or every convenor at once — so recipients are a list
+   you build up, not a single box.
+
+   Email takes them all in one go. WhatsApp has no link that opens a
+   message to several people, so rather than pretend otherwise the
+   dialog walks through the chats one at a time and says where it is up
+   to.
+   --------------------------------------------------------------------- */
+const SHARE = { to:[], waAt:0 };
+
+function shareAdd(name, email, phone){
+  name = (name || '').trim(); email = (email || '').trim(); phone = (phone || '').trim();
+  if (!email && !phone){ toast('Add an email address or a WhatsApp number'); return false; }
+  const same = SHARE.to.find(t =>
+    (email && t.email.toLowerCase() === email.toLowerCase()) || (phone && t.phone === phone));
+  if (same){ toast(esc(same.name || email || phone) + ' is already on the list'); return false; }
+  SHARE.to.push({ name:name, email:email, phone:phone });
+  SHARE.waAt = 0;
+  drawRecipients();
+  return true;
+}
+function shareDrop(i){ SHARE.to.splice(i, 1); SHARE.waAt = 0; drawRecipients(); }
+
+/* Tick or untick somebody already known to the board. */
+function sharePick(name, email, phone){
+  const at = SHARE.to.findIndex(t =>
+    (email && t.email.toLowerCase() === String(email).toLowerCase()) || (phone && t.phone === phone));
+  if (at >= 0) shareDrop(at); else shareAdd(name, email, phone);
+}
+function shareHas(email, phone){
+  return SHARE.to.some(t =>
+    (email && t.email.toLowerCase() === String(email).toLowerCase()) || (phone && t.phone === phone));
+}
+
+function drawRecipients(){
+  const box = $('sh-chips');
+  if (box) box.innerHTML = SHARE.to.length
+    ? SHARE.to.map((t,i) => '<span class="chip">' + esc(t.name || t.email || t.phone)
+        + '<span class="mini">' + esc(t.email || t.phone) + '</span>'
+        + '<button title="Remove" onclick="shareDrop(' + i + ')">&times;</button></span>').join('')
+    : '<span class="mini">Nobody chosen yet \u2014 tick a name below, or add someone.</span>';
+  const known = $('sh-known');
+  if (known) known.querySelectorAll('button[data-em],button[data-ph]').forEach(b => {
+    b.classList.toggle('on', shareHas(b.getAttribute('data-em'), b.getAttribute('data-ph')));
+  });
+  const n = SHARE.to.length;
+  const em = SHARE.to.filter(t => t.email).length;
+  const wa = SHARE.to.filter(t => t.phone).length;
+  const cnt = $('sh-count');
+  if (cnt) cnt.textContent = n
+    ? n + (n === 1 ? ' recipient' : ' recipients') + ' \u00b7 ' + em + ' by email, ' + wa + ' on WhatsApp'
+    : '';
+  const wb = $('sh-wa-btn');
+  if (wb) wb.textContent = wa > 1 ? ' WhatsApp (1 of ' + wa + ')' : ' WhatsApp';
+}
+
 async function openShare(kind, id){
   const c = await shareContent(kind, id);
-  const contacts = await db.list('contacts');
+  const [contacts, profiles] = await Promise.all([
+    db.list('contacts'),
+    db.list('profiles').catch(() => [])
+  ]);
+  SHARE.to = []; SHARE.waAt = 0;
+
+  /* People the board already knows: everyone written to before, and the
+     members of the board itself, whose number is on their profile. */
+  const known = [];
+  profiles.filter(x => x.contact && x.role !== 'pending' && x.role !== 'blocked')
+    .forEach(x => known.push({ name:x.full_name || 'Board member',
+      note:roleName(x.role) + (x.area_id ? ', ' + areaName(x.area_id) : ''),
+      email:'', phone:x.contact }));
+  contacts.forEach(x => {
+    if (known.some(k => (x.email && k.email === x.email) || (x.phone && k.phone === x.phone))) return;
+    known.push({ name:x.name || x.email || x.phone, note:'', email:x.email || '', phone:x.phone || '' });
+  });
+
   openModal('Send this',
     (c.attach ? '<div class="note" style="margin-top:0">' + esc(c.attach) + '</div>' : '')
+    + '<div class="field"><label>Send to</label><div id="sh-chips" class="chips"></div></div>'
+    + (known.length
+      ? '<div class="field"><label>Pick from people the board knows</label>'
+        + '<div id="sh-known" class="picklist">'
+        + known.map(k => '<button type="button" data-em="' + esc(k.email) + '" data-ph="' + esc(k.phone) + '" '
+            + 'onclick="sharePick(this.getAttribute(\'data-nm\'),this.getAttribute(\'data-em\'),this.getAttribute(\'data-ph\'))" '
+            + 'data-nm="' + esc(k.name) + '">' + esc(k.name)
+            + '<span class="mini">' + esc(k.email || k.phone) + (k.note ? ' \u00b7 ' + esc(k.note) : '') + '</span>'
+            + '</button>').join('')
+        + '</div></div>'
+      : '')
     + '<div class="grid g3">'
-    + '<div class="field"><label for="sh-name">Who is this</label>'
-    + '<input id="sh-name" list="sh-names" placeholder="e.g. Council Secretary">'
-    + '<datalist id="sh-names">' + contacts.map(x => '<option value="' + esc(x.name || '') + '"></option>').join('') + '</datalist></div>'
+    + '<div class="field"><label for="sh-name">Name</label>'
+    + '<input id="sh-name" placeholder="e.g. Council Secretary"></div>'
     + '<div class="field"><label for="sh-em">Email address</label>'
-    + '<input id="sh-em" type="email" list="sh-emails" placeholder="name@example.com" onchange="fillContact()">'
-    + '<datalist id="sh-emails">' + contacts.filter(x => x.email)
-        .map(x => '<option value="' + esc(x.email) + '">' + esc(x.name || '') + '</option>').join('') + '</datalist></div>'
+    + '<input id="sh-em" type="email" placeholder="name@example.com"></div>'
     + '<div class="field"><label for="sh-wa">WhatsApp number</label>'
-    + '<input id="sh-wa" list="sh-phones" placeholder="0300 1234567">'
-    + '<datalist id="sh-phones">' + contacts.filter(x => x.phone)
-        .map(x => '<option value="' + esc(x.phone) + '">' + esc(x.name || '') + '</option>').join('') + '</datalist></div></div>'
-    + '<p class="mini" style="margin:-6px 0 14px">Anyone you send to is remembered, so next time you can pick them from the list. '
-    + 'Leave the number blank to choose the chat inside WhatsApp.</p>'
+    + '<input id="sh-wa" placeholder="0300 1234567"></div></div>'
+    + '<div style="margin:-6px 0 14px"><button class="btn sm ghost" onclick="shareAddTyped()">Add to the list</button> '
+    + '<span class="mini" id="sh-count"></span></div>'
     + fld('sh-subj','Subject', c.subject)
     + '<div class="field"><label for="sh-body">Message</label><textarea id="sh-body" style="min-height:240px">'
     + esc(c.body) + '</textarea></div>'
     + '<div class="send-row">'
-    + '<button class="btn send-wa" onclick="sendWhatsApp()">'
+    + '<button class="btn send-wa" id="sh-wa-btn" onclick="sendWhatsApp()">'
     + '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">'
     + '<path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2zm5.8 14.03c-.24.68-1.4 1.3-1.94 1.34-.5.04-.98.22-3.3-.69-2.77-1.09-4.53-3.92-4.67-4.1-.13-.18-1.11-1.48-1.11-2.83s.71-2 .96-2.28c.25-.27.55-.34.73-.34.18 0 .37 0 .53.01.17.01.4-.06.62.48.24.55.8 1.9.87 2.04.07.14.12.3.02.48-.09.18-.14.3-.28.46-.14.16-.29.36-.42.48-.14.14-.28.29-.12.57.16.27.72 1.18 1.54 1.91 1.06.94 1.95 1.23 2.22 1.37.27.14.43.12.59-.07.16-.18.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.6.75 1.87.89.27.14.46.2.53.32.07.11.07.64-.17 1.32z"/></svg>'
     + ' WhatsApp</button>'
@@ -6515,31 +6755,65 @@ async function openShare(kind, id){
     + '<rect x="2.5" y="4.5" width="19" height="15" rx="2"/><path d="M3 6l9 6.5L21 6"/></svg>'
     + ' Open in email</button>'
     + '<button class="btn ghost" onclick="copyShare()">Copy text</button></div>');
+  drawRecipients();
 }
 
-function fillContact(){
-  const em = mv('sh-em');
-  db.list('contacts').then(cs => {
-    const hit = cs.find(c => c.email === em);
-    if (!hit) return;
-    if (!mv('sh-name') && hit.name) $('sh-name').value = hit.name;
-    if (!mv('sh-wa') && hit.phone) $('sh-wa').value = hit.phone;
-  });
+function shareAddTyped(){
+  if (shareAdd(mv('sh-name'), mv('sh-em'), mv('sh-wa'))){
+    $('sh-name').value = ''; $('sh-em').value = ''; $('sh-wa').value = '';
+    $('sh-name').focus();
+  }
 }
+
+/* Anything typed but not yet added still counts as a recipient, so a
+   message is never sent to nobody because of a missed button. */
+function shareRecipients(){
+  const typed = { name:mv('sh-name'), email:mv('sh-em'), phone:mv('sh-wa') };
+  if ((typed.email || typed.phone) && !shareHas(typed.email, typed.phone)) shareAdd(typed.name, typed.email, typed.phone);
+  return SHARE.to;
+}
+
 async function sendEmail(){
-  const to = mv('sh-em');
-  if (!to){ toast('Enter an email address first'); return; }
-  await rememberContact(mv('sh-name'), to, mv('sh-wa'));
-  openLink('mailto:' + encodeURIComponent(to)
+  const to = shareRecipients().filter(t => t.email);
+  if (!to.length){ toast('Add at least one email address first'); return; }
+  for (const t of to) await rememberContact(t.name, t.email, t.phone);
+  openLink('mailto:' + to.map(t => encodeURIComponent(t.email)).join(',')
     + '?subject=' + encodeURIComponent(mv('sh-subj'))
     + '&body=' + encodeURIComponent($('sh-body').value));
-  toast('Opening your email app');
+  toast(to.length === 1 ? 'Opening your email app'
+    : 'Opening your email app with ' + to.length + ' recipients');
 }
+
 async function sendWhatsApp(){
-  await rememberContact(mv('sh-name'), mv('sh-em'), mv('sh-wa'));
-  openLink('https://wa.me/' + waNumber(mv('sh-wa')) + '?text=' + encodeURIComponent($('sh-body').value));
-  toast('Opening WhatsApp');
+  const list = shareRecipients();
+  const withNum = list.filter(t => t.phone);
+  for (const t of list) await rememberContact(t.name, t.email, t.phone);
+
+  /* No number at all: let WhatsApp ask who to send to. */
+  if (!withNum.length){
+    openLink('https://wa.me/?text=' + encodeURIComponent($('sh-body').value));
+    toast('Opening WhatsApp \u2014 choose the chat there');
+    return;
+  }
+  if (SHARE.waAt >= withNum.length) SHARE.waAt = 0;
+  const t = withNum[SHARE.waAt];
+  openLink('https://wa.me/' + waNumber(t.phone) + '?text=' + encodeURIComponent($('sh-body').value));
+  SHARE.waAt++;
+
+  if (SHARE.waAt < withNum.length){
+    const next = withNum[SHARE.waAt];
+    const btn = $('sh-wa-btn');
+    if (btn) btn.textContent = ' WhatsApp ' + (SHARE.waAt + 1) + ' of ' + withNum.length
+      + ' \u2014 ' + (next.name || next.phone);
+    toast('Sent to ' + (t.name || t.phone) + '. Press WhatsApp again for ' + (next.name || next.phone));
+  } else {
+    const btn = $('sh-wa-btn');
+    if (btn) btn.textContent = ' WhatsApp';
+    toast(withNum.length === 1 ? 'Opening WhatsApp'
+      : 'That is all ' + withNum.length + ' chats opened');
+  }
 }
+
 function copyShare(){
   const t = $('sh-body');
   if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(() => toast('Copied'));
@@ -6652,6 +6926,32 @@ function importFields(target){
     { k:'age',           h:'Age', type:'number' },
     { k:'enrolled_on',   h:'Enrolled On' }
   ];
+  if (target === 'morning_students') return [
+    { k:'full_name',      h:'Student Name', required:true },
+    { k:'age',            h:'Age', type:'number' },
+    { k:'class_grade',    h:'Class' },
+    { k:'guardian_name',  h:'Guardian' },
+    { k:'contact',        h:'Contact' },
+    { k:'monthly_fee',    h:'Fees', type:'number' },
+    { k:'joined_on',      h:'Joined On' }
+  ];
+  if (target === 'morning_teachers') return [
+    { k:'full_name',      h:'Teacher Name', required:true },
+    { k:'designation',    h:'Designation' },
+    { k:'subject',        h:'Subject' },
+    { k:'contact',        h:'Contact' },
+    { k:'monthly_salary', h:'Salary', type:'number' },
+    { k:'account_name',   h:'Account Name' },
+    { k:'account_type',   h:'Easy Paisa/Bank Account' },
+    { k:'account_number', h:'Account Number' }
+  ];
+  if (target === 'program_participants') return [
+    { k:'full_name', h:'Full Name', required:true },
+    { k:'email',     h:'Email' },
+    { k:'age',       h:'Age', type:'number' },
+    { k:'whatsapp',  h:'WhatsApp Number' },
+    { k:'fee',       h:'Fees', type:'number' }
+  ];
   if (target === 'ace_students') return [
     { k:'full_name',      h:'Student Name', required:true },
     { k:'guardian_name',  h:'Guardian' },
@@ -6680,6 +6980,9 @@ function openImport(target, classId){
     : target === 'afghan_students' ? 'the Oklife School roll'
     : target === 'ace_teachers' ? 'the ACE teacher register'
     : target === 'ace_students' ? 'this ACE class roll'
+    : target === 'morning_students' ? 'the morning tuition roll'
+    : target === 'morning_teachers' ? 'the morning tuition teacher list'
+    : target === 'program_participants' ? 'this programme\u2019s list of people. The sheet does not carry fees, so add those afterwards'
     : target === 'students' ? 'the student register'
     : 'the <b>' + esc(SHEETS[feeState.sheet].short) + '</b> sheet for ' + MONTHS[feeState.month-1] + ' ' + feeState.year;
   openModal('Import from Excel',
@@ -6888,6 +7191,40 @@ async function runImport(){
     closeModal(); toast(fresh.length + ' students imported'); render(); return;
   }
 
+  if (IMPORT.target === 'morning_students' || IMPORT.target === 'morning_teachers'){
+    const fresh = rows.map((r,i) => {
+      const row = Object.assign({}, r, { status:'active' });
+      if (IMPORT.target === 'morning_students'){
+        row.serial_no = i + 1;
+        row.joined_on = tidyDate(row.joined_on);
+      } else {
+        row.joined_on = tidyDate(row.joined_on);
+        if (!row.designation) row.designation = 'Teacher';
+        /* salary and account details are money, so they only come in for
+           somebody allowed to see money */
+        if (!canFinance()){ delete row.monthly_salary; delete row.account_name;
+                            delete row.account_type; delete row.account_number; }
+      }
+      return stampArea(row);
+    }).filter(r => r.full_name);
+    await db.insertMany(IMPORT.target, fresh);
+    closeModal();
+    toast(fresh.length + ' ' + (IMPORT.target === 'morning_students' ? 'students' : 'teachers') + ' imported');
+    render(); return;
+  }
+
+  if (IMPORT.target === 'program_participants'){
+    const pid = IMPORT.classId;          // the programme the list belongs to
+    const fresh = rows.map((r,i) => stampArea(Object.assign({}, r, {
+      program_id:pid, serial_no:i + 1, paid:false
+    }))).filter(r => r.full_name);
+    await db.insertMany('program_participants', fresh);
+    closeModal();
+    toast(fresh.length + ' people imported \u2014 add their fees next');
+    if (pid) openParticipants(pid); else render();
+    return;
+  }
+
   if (IMPORT.target === 'ace_teachers' || IMPORT.target === 'ace_students'){
     const money = canPortfolioMoney('ace');
     const fresh = rows.map(r => {
@@ -7004,6 +7341,507 @@ async function delRow(table, id){
 }
 
 /* =====================================================================
+   Morning tuition classes.
+
+   Kharadar runs these in the morning: a roll of children with the fee
+   each pays, the teachers who take them, and what those teachers are
+   paid month by month. The salary slip and its debit voucher follow the
+   council's own printed form.
+   ===================================================================== */
+const morningState = { tab:'students', month:new Date().getMonth()+1,
+                       year:new Date().getFullYear(), data:null };
+CACHE.states.push(morningState);
+
+const MORNING_AREAS = ['kharadar'];
+
+async function morningLoad(){
+  const [students, teachers, salaries] = await Promise.all([
+    sList('morning_students'), sList('morning_teachers'), sList('morning_salaries').catch(() => [])
+  ]);
+  return { students, teachers, salaries };
+}
+async function morningData(){
+  if (!morningState.data) morningState.data = await morningLoad();
+  return morningState.data;
+}
+const mornOrder = list => list.slice().sort((a,b) =>
+  (a.serial_no || 9e9) - (b.serial_no || 9e9) || (a.full_name||'').localeCompare(b.full_name||''));
+
+/* Rs 12,500 -> "Twelve Thousand Five Hundred Rupees Only", the way the
+   voucher is written out by hand today. Lakh and crore, not million. */
+const ONES = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven',
+  'Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+const TENS = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+function twoDigits(n){
+  if (n < 20) return ONES[n];
+  return TENS[Math.floor(n/10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+}
+function threeDigits(n){
+  const h = Math.floor(n/100), r = n % 100;
+  return (h ? ONES[h] + ' Hundred' + (r ? ' ' : '') : '') + (r ? twoDigits(r) : '');
+}
+function amountInWords(amount){
+  let n = Math.floor(Math.abs(num(amount)));
+  const paisa = Math.round((Math.abs(num(amount)) - n) * 100);
+  if (!n && !paisa) return 'Zero Rupees Only';
+  const parts = [];
+  const crore = Math.floor(n / 10000000); n %= 10000000;
+  const lakh  = Math.floor(n / 100000);   n %= 100000;
+  const thou  = Math.floor(n / 1000);     n %= 1000;
+  if (crore) parts.push(threeDigits(crore) + ' Crore');
+  if (lakh)  parts.push(threeDigits(lakh) + ' Lakh');
+  if (thou)  parts.push(threeDigits(thou) + ' Thousand');
+  if (n)     parts.push(threeDigits(n));
+  let out = parts.join(' ').replace(/\s+/g, ' ').trim();
+  out = (out ? out + ' Rupees' : 'Zero Rupees');
+  if (paisa) out += ' and ' + twoDigits(paisa) + ' Paisa';
+  return out + ' Only';
+}
+
+function morningAllowed(){
+  return LOCAL || MORNING_AREAS.indexOf(SCOPE.area) >= 0
+      || SCOPE.area === 'all' || SCOPE.area === 'jurisdiction';
+}
+
+async function pageMorning(v){
+  let d;
+  try{ d = await morningLoad(); }
+  catch(err){
+    const m = String(err && err.message || err);
+    if (/does not exist|schema cache|relation/i.test(m)){
+      v.innerHTML = head('Morning tuition','')
+        + '<div class="note warn"><b>These tables are not in your database yet.</b><br>'
+        + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.<br>'
+        + '<span class="mini">' + esc(m) + '</span></div>';
+      return;
+    }
+    throw err;
+  }
+  morningState.data = d;
+
+  const tabs = [['students','Students'],['teachers','Teachers']]
+    .concat(canFinance() ? [['salary','Salary & slips']] : []);
+  if (!tabs.some(t => t[0] === morningState.tab)) morningState.tab = 'students';
+  const names = { students:'Students', teachers:'Teachers', salary:'Salary & slips' };
+
+  let h = head('Morning tuition · ' + names[morningState.tab],
+    'The morning classes run in ' + esc(areaName(SCOPE.area)) + ' — who attends, who teaches, and what they are paid.',
+    morningActions());
+  h += scopeBanner;
+  h += '<div class="subtabs">'
+    + tabs.map(t => '<button class="' + (morningState.tab === t[0] ? 'on' : '') + '" '
+        + 'onclick="morningState.tab=\'' + t[0] + '\';render()">' + t[1] + '</button>').join('')
+    + '</div>';
+
+  if (morningState.tab === 'students')      h += morningStudents(d);
+  else if (morningState.tab === 'teachers') h += morningTeachers(d);
+  else                                      h += morningSalary(d);
+  v.innerHTML = h;
+}
+
+function morningActions(){
+  const t = morningState.tab;
+  if (t === 'students')
+    return '<button class="btn ghost" onclick="openImport(\'morning_students\')">Import</button>'
+      + '<button class="btn ghost" onclick="exportMorningStudents()">Download</button>'
+      + '<button class="btn send" onclick="openShare(\'morning_students\')">Send</button>'
+      + '<button class="btn" onclick="editMorningStudent()">Add student</button>';
+  if (t === 'teachers')
+    return '<button class="btn ghost" onclick="openImport(\'morning_teachers\')">Import</button>'
+      + '<button class="btn ghost" onclick="exportMorningTeachers()">Download</button>'
+      + '<button class="btn send" onclick="openShare(\'morning_teachers\')">Send</button>'
+      + '<button class="btn" onclick="editMorningTeacher()">Add teacher</button>';
+  return '<button class="btn ghost" onclick="exportMorningSalary()">Download</button>'
+      + '<button class="btn send" onclick="openShare(\'morning_salary\')">Send</button>';
+}
+
+/* ---------------- students ---------------- */
+function morningStudents(d){
+  const live = mornOrder(d.students.filter(s => s.status !== 'left'));
+  const left = d.students.filter(s => s.status === 'left').length;
+  const fees = live.reduce((t,s) => t + num(s.monthly_fee), 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">On the roll</div><div class="v">' + live.length + '</div></div>'
+    + '<div><div class="k">Fees due each month</div><div class="v">Rs ' + money(fees) + '</div></div>'
+    + '<div><div class="k">Average fee</div><div class="v">Rs '
+      + money(live.length ? Math.round(fees / live.length) : 0) + '</div></div>'
+    + (left ? '<div><div class="k">Left</div><div class="v">' + left + '</div></div>' : '')
+    + '</div><div style="height:18px"></div>';
+
+  h += '<div class="panel"><h2>Student roll</h2><div class="body flush">';
+  if (!live.length){
+    h += '<div class="empty"><p>Nobody is on the morning roll yet.</p>'
+      + '<button class="btn" onclick="editMorningStudent()">Add the first student</button> '
+      + '<button class="btn ghost" onclick="openImport(\'morning_students\')">Import from Excel</button></div>';
+  } else {
+    h += tableTools('tbl-morn-s', 'Search students…', live.length + ' on the roll')
+      + '<div class="scroll' + (live.length > 14 ? ' tall' : '') + '">'
+      + '<table class="ledger" id="tbl-morn-s"><thead><tr><th class="sn">#</th>'
+      + sortableTh('tbl-morn-s', 1, 'Student name') + sortableTh('tbl-morn-s', 2, 'Age', true)
+      + sortableTh('tbl-morn-s', 3, 'Class') + '<th>Guardian</th><th>Contact</th>'
+      + sortableTh('tbl-morn-s', 6, 'Monthly fee', true) + '<th></th></tr></thead><tbody>'
+      + live.map((s,i) => '<tr><td>' + (i+1) + '</td>'
+        + '<td>' + esc(s.full_name) + '</td>'
+        + '<td class="num">' + (num(s.age) ? num(s.age) : '—') + '</td>'
+        + '<td>' + esc(s.class_grade || '—') + '</td>'
+        + '<td>' + esc(s.guardian_name || '—') + '</td>'
+        + '<td>' + esc(s.contact || '—') + '</td>'
+        + '<td class="num">' + (num(s.monthly_fee) ? 'Rs ' + money(s.monthly_fee) : '—') + '</td>'
+        + '<td style="width:1%;white-space:nowrap">'
+        + '<button class="btn sm ghost" onclick="editMorningStudent(\'' + s.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delMorning(\'morning_students\',\'' + s.id + '\')">&times;</button>'
+        + '</td></tr>').join('')
+      + '</tbody><tfoot><tr><td></td><td>Total (' + live.length + ')</td><td colspan="4"></td>'
+      + '<td class="num">Rs ' + money(fees) + '</td><td></td></tr></tfoot></table></div>';
+  }
+  return h + '</div></div>';
+}
+
+async function editMorningStudent(id){
+  const d = await morningData();
+  const s = id ? d.students.find(x => x.id === id) : { status:'active' };
+  if (!s) return;
+  const next = Math.max(0, ...d.students.map(x => num(x.serial_no))) + 1;
+  openModal(id ? 'Edit student' : 'Add a student to the morning roll',
+    '<div class="grid g2">' + fld('m-name','Full name', s.full_name)
+    + fld('m-guardian','Guardian', s.guardian_name) + '</div>'
+    + '<div class="grid g3">' + fld('m-age','Age', s.age, 'number')
+    + fld('m-class','Class', s.class_grade) + fld('m-contact','Contact', s.contact) + '</div>'
+    + '<div class="grid g3">' + fld('m-fee','Monthly fee (Rs)', s.monthly_fee, 'number')
+    + fld('m-joined','Joined on', s.joined_on, 'date')
+    + sel('m-status','Status', [['active','On the roll'],['left','Left']], s.status || 'active') + '</div>'
+    + fld('m-remarks','Remarks', s.remarks),
+    async () => {
+      const name = mv('m-name');
+      if (!name){ toast('A name is needed'); return; }
+      const row = { full_name:name, guardian_name:mv('m-guardian'),
+        age:num(mv('m-age')) || null, class_grade:mv('m-class'), contact:mv('m-contact'),
+        monthly_fee:num(mv('m-fee')), joined_on:mv('m-joined') || null,
+        status:mv('m-status'), remarks:mv('m-remarks') };
+      if (id) await db.update('morning_students', id, row);
+      else await db.insert('morning_students', stampArea(Object.assign({ serial_no:next }, row)));
+      closeModal(); toast(id ? 'Student updated' : 'Student added'); render();
+    });
+}
+
+/* ---------------- teachers ---------------- */
+function morningTeachers(d){
+  const live = d.teachers.filter(t => t.status !== 'left');
+  const bill = live.reduce((t,x) => t + num(x.monthly_salary), 0);
+  /* What a teacher is paid, and where it is paid, is the board's money
+     business: everyone may see who teaches, but only the people trusted
+     with finance see the figures. */
+  const money$ = canFinance();
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Teachers</div><div class="v">' + live.length + '</div></div>'
+    + (money$ ? '<div><div class="k">Salary bill each month</div><div class="v">Rs ' + money(bill) + '</div></div>' : '')
+    + '</div><div style="height:18px"></div>';
+
+  h += '<div class="panel"><h2>Teachers</h2><div class="body flush">';
+  if (!live.length){
+    h += '<div class="empty"><p>No teachers recorded yet.</p>'
+      + '<button class="btn" onclick="editMorningTeacher()">Add the first teacher</button> '
+      + '<button class="btn ghost" onclick="openImport(\'morning_teachers\')">Import from Excel</button></div>';
+  } else {
+    h += '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th>'
+      + '<th>Teacher name</th><th>Designation</th><th>Subject</th><th>Contact</th>'
+      + (money$ ? '<th class="num">Monthly salary</th><th>Paid into</th>' : '')
+      + '<th></th></tr></thead><tbody>'
+      + live.map((t,i) => '<tr><td>' + (i+1) + '</td>'
+        + '<td>' + esc(t.full_name) + '</td>'
+        + '<td>' + esc(t.designation || 'Teacher') + '</td>'
+        + '<td>' + esc(t.subject || '—') + '</td>'
+        + '<td>' + esc(t.contact || '—') + '</td>'
+        + (money$
+          ? '<td class="num">' + (num(t.monthly_salary) ? 'Rs ' + money(t.monthly_salary) : '—') + '</td>'
+            + '<td>' + esc(t.account_number ? (t.account_type || 'Account') + ' · ' + t.account_number : '—')
+            + (t.account_name ? '<div class="mini">' + esc(t.account_name) + '</div>' : '') + '</td>'
+          : '')
+        + '<td style="width:1%;white-space:nowrap">'
+        + (money$ ? '<button class="btn sm gold" onclick="morningSlip(\'' + t.id + '\')">Salary slip</button> ' : '')
+        + '<button class="btn sm ghost" onclick="editMorningTeacher(\'' + t.id + '\')">Edit</button> '
+        + '<button class="btn sm danger" onclick="delMorning(\'morning_teachers\',\'' + t.id + '\')">&times;</button>'
+        + '</td></tr>').join('')
+      + '</tbody><tfoot><tr><td></td><td>Total (' + live.length + ')</td><td colspan="3"></td>'
+      + (money$ ? '<td class="num">Rs ' + money(bill) + '</td><td></td>' : '')
+      + '<td></td></tr></tfoot></table></div>';
+  }
+  return h + '</div></div>';
+}
+
+async function editMorningTeacher(id){
+  const d = await morningData();
+  const t = id ? d.teachers.find(x => x.id === id) : { status:'active', designation:'Teacher' };
+  if (!t) return;
+  openModal(id ? 'Edit teacher' : 'Add a teacher',
+    '<div class="grid g2">' + fld('mt-name','Full name', t.full_name)
+    + fld('mt-desig','Designation', t.designation || 'Teacher') + '</div>'
+    + '<div class="grid g3">' + fld('mt-subject','Subject', t.subject)
+    + fld('mt-contact','Contact', t.contact)
+    + fld('mt-salary','Monthly salary (Rs)', t.monthly_salary, 'number') + '</div>'
+    + '<div class="grid g3">' + fld('mt-acname','Account name', t.account_name)
+    + sel('mt-actype','Paid by', [['','—'],['Easy Paisa','Easy Paisa'],['JazzCash','JazzCash'],
+        ['Bank Account','Bank Account'],['Cash','Cash']], t.account_type || '')
+    + fld('mt-acnum','Account number', t.account_number) + '</div>'
+    + '<div class="grid g2">' + fld('mt-joined','Joined on', t.joined_on, 'date')
+    + sel('mt-status','Status', [['active','Teaching'],['left','Left']], t.status || 'active') + '</div>'
+    + fld('mt-remarks','Remarks', t.remarks),
+    async () => {
+      const name = mv('mt-name');
+      if (!name){ toast('A name is needed'); return; }
+      const row = { full_name:name, designation:mv('mt-desig'), subject:mv('mt-subject'),
+        contact:mv('mt-contact'), monthly_salary:num(mv('mt-salary')),
+        account_name:mv('mt-acname'), account_type:mv('mt-actype'), account_number:mv('mt-acnum'),
+        joined_on:mv('mt-joined') || null, status:mv('mt-status'), remarks:mv('mt-remarks') };
+      if (id) await db.update('morning_teachers', id, row);
+      else await db.insert('morning_teachers', stampArea(row));
+      closeModal(); toast(id ? 'Teacher updated' : 'Teacher added'); render();
+    });
+}
+
+/* ---------------- salary and slips ---------------- */
+function morningSalaryRow(d, teacherId, m, y){
+  return d.salaries.find(s => s.teacher_id === teacherId && s.month === m && s.year === y) || null;
+}
+
+function morningSalary(d){
+  const m = morningState.month, y = morningState.year;
+  const live = d.teachers.filter(t => t.status !== 'left');
+  const years = []; for (let yy = new Date().getFullYear()+1; yy >= 2023; yy--) years.push(yy);
+
+  const rows = live.map(t => {
+    const s = morningSalaryRow(d, t.id, m, y);
+    return { t:t, s:s, amount: s ? num(s.amount) : num(t.monthly_salary), paid: !!(s && s.paid) };
+  });
+  const due  = rows.reduce((x,r) => x + r.amount, 0);
+  const paid = rows.filter(r => r.paid).reduce((x,r) => x + r.amount, 0);
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Salary for ' + MONTHS[m-1] + '</div><div class="v">Rs ' + money(due) + '</div></div>'
+    + '<div><div class="k">Paid</div><div class="v">Rs ' + money(paid) + '</div></div>'
+    + '<div><div class="k">Still to pay</div><div class="v">Rs ' + money(due - paid) + '</div></div>'
+    + '</div><div style="height:18px"></div>';
+
+  h += '<div class="panel"><h2><span>Salary · ' + MONTHS[m-1] + ' ' + y + '</span>'
+    + '<span class="actions">'
+    + '<select style="width:130px" onchange="morningState.month=+this.value;render()">'
+      + MONTHS.map((x,i) => '<option value="' + (i+1) + '"' + (m === i+1 ? ' selected' : '') + '>' + x + '</option>').join('')
+    + '</select>'
+    + '<select style="width:92px" onchange="morningState.year=+this.value;render()">'
+      + years.map(yy => '<option' + (y === yy ? ' selected' : '') + '>' + yy + '</option>').join('')
+    + '</select>'
+    + '<button class="btn sm gold" onclick="morningSlipAll()">All slips</button>'
+    + '</span></h2><div class="body flush">';
+
+  if (!live.length){
+    h += '<div class="empty"><p>No teachers to pay yet.</p>'
+      + '<button class="btn" onclick="morningState.tab=\'teachers\';render()">Go to teachers</button></div>';
+  } else {
+    h += '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th>'
+      + '<th>Teacher</th><th class="num">Amount</th><th>Voucher no.</th><th>Paid on</th>'
+      + '<th>Paid</th><th></th></tr></thead><tbody>'
+      + rows.map((r,i) => '<tr><td>' + (i+1) + '</td>'
+        + '<td>' + esc(r.t.full_name) + '<div class="mini">' + esc(r.t.designation || 'Teacher') + '</div></td>'
+        + '<td class="num">Rs ' + money(r.amount) + '</td>'
+        + '<td>' + esc((r.s && r.s.voucher_no) || '—') + '</td>'
+        + '<td>' + (r.s && r.s.paid_on ? fmtDate(r.s.paid_on) : '—') + '</td>'
+        + '<td>' + (r.paid ? '<span class="tag t-green">Paid</span>' : '<span class="tag t-gold">Due</span>') + '</td>'
+        + '<td style="width:1%;white-space:nowrap">'
+        + '<button class="btn sm gold" onclick="morningSlip(\'' + r.t.id + '\')">Slip</button> '
+        + '<button class="btn sm ghost" onclick="editMorningSalary(\'' + r.t.id + '\')">Record</button>'
+        + '</td></tr>').join('')
+      + '</tbody><tfoot><tr><td></td><td>Total (' + rows.length + ')</td>'
+      + '<td class="num">Rs ' + money(due) + '</td><td colspan="4"></td></tr></tfoot></table></div>';
+  }
+  return h + '</div></div>';
+}
+
+async function editMorningSalary(teacherId){
+  const d = await morningData();
+  const t = d.teachers.find(x => x.id === teacherId);
+  if (!t) return;
+  const m = morningState.month, y = morningState.year;
+  const s = morningSalaryRow(d, teacherId, m, y);
+  openModal('Salary · ' + t.full_name + ' · ' + MONTHS[m-1] + ' ' + y,
+    '<div class="grid g2">'
+    + fld('ms-amount','Amount (Rs)', s ? s.amount : t.monthly_salary, 'number')
+    + fld('ms-voucher','Voucher number', s ? s.voucher_no : '') + '</div>'
+    + '<div class="grid g2">' + fld('ms-on','Paid on', s ? s.paid_on : todayISO(), 'date')
+    + sel('ms-paid','Status', [['no','Still due'],['yes','Paid']], s && s.paid ? 'yes' : 'no') + '</div>'
+    + fld('ms-remarks','Remarks', s ? s.remarks : ''),
+    async () => {
+      const row = { amount:num(mv('ms-amount')), voucher_no:mv('ms-voucher'),
+        paid_on:mv('ms-on') || null, paid:mv('ms-paid') === 'yes', remarks:mv('ms-remarks') };
+      if (s) await db.update('morning_salaries', s.id, row);
+      else await db.insert('morning_salaries',
+        stampArea(Object.assign({ teacher_id:teacherId, month:m, year:y }, row)));
+      closeModal(); toast('Salary recorded'); render();
+    });
+}
+
+/* The council's own form: the slip on top, the debit voucher below it. */
+function slipDocFor(t, s, m, y){
+  const amount = s ? num(s.amount) : num(t.monthly_salary);
+  const out = [
+    para('Salary Slip', { bold:true, center:true, size:30 }),
+    new docx.Paragraph({ text:'' }),
+    /* The printed form has every label in the left column bold and the
+       value beside it plain, so it is laid out that way rather than with
+       the general table helper. */
+    labelTable([
+      ['Name', t.full_name || ''],
+      ['Designation', t.designation || 'Teacher'],
+      ['Area', areaName(t.area_id || SCOPE.area)],
+      ['Salary', 'Rs ' + money(amount)],
+      ['Month', MONTHS[m-1] + ' ' + y],
+      ['Sign of Teacher', '']
+    ]),
+    new docx.Paragraph({ text:'' }),
+    new docx.Paragraph({ text:'' }),
+    para('His Highness Prince Aga Khan', { bold:true, center:true, size:32 }),
+    para('Shia Imami Ismailia Council For Kharadar', { bold:true, center:true, size:22 }),
+    para('DEBIT VOUCHER', { center:true, size:22 }),
+    new docx.Paragraph({ text:'' }),
+    labelled('Date:', s && s.paid_on ? fmtDate(s.paid_on) : '________________'),
+    labelled('No.', (s && s.voucher_no) || '________________'),
+    labelled('Payee:', t.full_name || '________________'),
+    labelled('and Debit to', 'Morning tuition — teacher salary A/C'),
+    new docx.Paragraph({ text:'' }),
+    simpleTable([
+      ['Particulars', 'Amount Rs.', 'Ps.'],
+      ['Morning tuition class salary v/o ' + MONTHS[m-1] + ' ’' + String(y).slice(-2),
+       money(amount), '00'],
+      ['', '', ''],
+      ['', '', ''],
+      ['Total', money(amount), '00']
+    ]),
+    new docx.Paragraph({ text:'' }),
+    labelled('Rupees:', amountInWords(amount)),
+    new docx.Paragraph({ text:'' }),
+    new docx.Paragraph({ text:'' }),
+    simpleTable([['Member Finance', 'Hon-Secretary / President', 'Receiver’s Signature'],
+                 ['', '', '']])
+  ];
+  return out;
+}
+function slipHtmlFor(t, s, m, y){
+  const amount = s ? num(s.amount) : num(t.monthly_salary);
+  const row = (a,b) => '<tr><td><b>' + esc(a) + '</b></td><td>' + esc(b) + '</td></tr>';
+  return '<p align="center"><b style="font-size:16pt">Salary Slip</b></p>'
+    + '<table>' + row('Name', t.full_name || '') + row('Designation', t.designation || 'Teacher')
+    + row('Area', areaName(t.area_id || SCOPE.area)) + row('Salary', 'Rs ' + money(amount))
+    + row('Month', MONTHS[m-1] + ' ' + y) + row('Sign of Teacher', '') + '</table>'
+    + '<br><br><p align="center"><b style="font-size:17pt">His Highness Prince Aga Khan</b><br>'
+    + '<b>Shia Imami Ismailia Council For Kharadar</b><br><u>DEBIT VOUCHER</u></p>'
+    + '<p>Date: ' + esc(s && s.paid_on ? fmtDate(s.paid_on) : '________________')
+    + '<br>No. ' + esc((s && s.voucher_no) || '________________')
+    + '<br>Payee: ' + esc(t.full_name || '')
+    + '<br>and Debit to Morning tuition — teacher salary A/C</p>'
+    + '<table><tr><th>Particulars</th><th>Amount Rs.</th><th>Ps.</th></tr>'
+    + '<tr><td>Morning tuition class salary v/o ' + esc(MONTHS[m-1]) + ' ’' + esc(String(y).slice(-2))
+    + '</td><td>' + money(amount) + '</td><td>00</td></tr>'
+    + '<tr><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td></tr>'
+    + '<tr><td><b>Total</b></td><td><b>' + money(amount) + '</b></td><td>00</td></tr></table>'
+    + '<p>Rupees: ' + esc(amountInWords(amount)) + '</p><br><br>'
+    + '<table><tr><td>Member Finance</td><td>Hon-Secretary / President</td><td>Receiver’s Signature</td></tr>'
+    + '<tr><td><br><br></td><td></td><td></td></tr></table>';
+}
+
+async function morningSlip(teacherId){
+  const d = await morningData();
+  const t = d.teachers.find(x => x.id === teacherId);
+  if (!t){ toast('That teacher is no longer on the list'); return; }
+  const m = morningState.month, y = morningState.year;
+  const s = morningSalaryRow(d, teacherId, m, y);
+  await saveDocx(() => slipDocFor(t, s, m, y),
+    'Salary_Slip_' + (t.full_name || 'Teacher').replace(/[^A-Za-z0-9]+/g, '_')
+      + '_' + MONTHS[m-1] + '_' + y + '.docx',
+    () => slipHtmlFor(t, s, m, y));
+}
+
+async function morningSlipAll(){
+  const d = await morningData();
+  const live = d.teachers.filter(t => t.status !== 'left');
+  if (!live.length){ toast('No teachers to make slips for'); return; }
+  const m = morningState.month, y = morningState.year;
+  await saveDocx(() => {
+    const out = [];
+    live.forEach((t,i) => {
+      if (i) out.push(new docx.Paragraph({ text:'', pageBreakBefore:true }));
+      slipDocFor(t, morningSalaryRow(d, t.id, m, y), m, y).forEach(x => out.push(x));
+    });
+    return out;
+  }, 'Salary_Slips_' + MONTHS[m-1] + '_' + y + '.docx',
+     () => live.map(t => slipHtmlFor(t, morningSalaryRow(d, t.id, m, y), m, y))
+             .join('<br style="page-break-before:always">'));
+}
+
+async function delMorning(table, id){
+  await delRowUndoable(table, id, table === 'morning_students' ? 'Student' : 'Teacher');
+}
+
+/* ---------------- downloads ---------------- */
+async function exportMorningStudents(){
+  const d = await morningData();
+  const live = mornOrder(d.students.filter(s => s.status !== 'left'));
+  await qspTuiSheet({
+    sheetName:'Morning Tuition',
+    title:'Morning Tuition — student roll — ' + areaName(SCOPE.area),
+    header:['Sr.#','Student Name','Age','Class','Guardian','Contact','Monthly Fee','Joined','Remarks'],
+    widths:[7,28,7,12,24,16,13,13,26],
+    rows:live.map((s,i) => [i+1, s.full_name, num(s.age) || '', s.class_grade || '',
+      s.guardian_name || '', s.contact || '', num(s.monthly_fee) || 0, s.joined_on || '', s.remarks || '']),
+    total:['', 'Total (' + live.length + ')', '', '', '', '',
+      live.reduce((t,s) => t + num(s.monthly_fee), 0), '', ''],
+    filename:'Morning_Tuition_Students.xlsx'
+  });
+}
+async function exportMorningTeachers(){
+  const d = await morningData();
+  const live = d.teachers.filter(t => t.status !== 'left');
+  /* The downloaded file follows the same rule as the screen: no figures
+     for somebody who is not allowed to see the board's money. */
+  const money$ = canFinance();
+  await qspTuiSheet({
+    sheetName:'Teachers',
+    title:'Morning Tuition — teachers — ' + areaName(SCOPE.area),
+    header:['Sr.#','Teacher Name','Designation','Subject','Contact']
+      .concat(money$ ? ['Monthly Salary','Account Name','Paid By','Account Number'] : []),
+    widths:[7,26,16,16,16].concat(money$ ? [15,22,15,22] : []),
+    rows:live.map((t,i) => [i+1, t.full_name, t.designation || 'Teacher', t.subject || '', t.contact || '']
+      .concat(money$ ? [num(t.monthly_salary) || 0, t.account_name || '',
+                        t.account_type || '', t.account_number || ''] : [])),
+    total:['', 'Total (' + live.length + ')', '', '', '']
+      .concat(money$ ? [live.reduce((x,t) => x + num(t.monthly_salary), 0), '', '', ''] : []),
+    filename:'Morning_Tuition_Teachers.xlsx'
+  });
+}
+async function exportMorningSalary(){
+  const d = await morningData();
+  const m = morningState.month, y = morningState.year;
+  const live = d.teachers.filter(t => t.status !== 'left');
+  const rows = live.map((t,i) => {
+    const s = morningSalaryRow(d, t.id, m, y);
+    return [i+1, t.full_name, t.designation || 'Teacher',
+      s ? num(s.amount) : num(t.monthly_salary),
+      (s && s.voucher_no) || '', (s && s.paid_on) || '', s && s.paid ? 'Paid' : 'Due'];
+  });
+  await qspTuiSheet({
+    sheetName:MONTHS[m-1] + ' ' + y,
+    title:'Morning Tuition — salary — ' + MONTHS[m-1] + ' ' + y,
+    header:['Sr.#','Teacher','Designation','Amount','Voucher No.','Paid On','Status'],
+    widths:[7,26,16,14,16,14,10],
+    rows:rows,
+    total:['', 'Total (' + rows.length + ')', '',
+      rows.reduce((t,r) => t + num(r[3]), 0), '', '', ''],
+    filename:'Morning_Tuition_Salary_' + MONTHS[m-1] + '_' + y + '.xlsx'
+  });
+}
+
+
+/* =====================================================================
    Tuesday cases
    ===================================================================== */
 async function pageCases(v){
@@ -7091,6 +7929,15 @@ function tcell(text, bold){
   return new docx.TableCell({ margins:{ top:60, bottom:60, left:100, right:100 },
     children:[ new docx.Paragraph({ children:[ new docx.TextRun({ text:String(text ?? ''), bold:!!bold, size:20 }) ] }) ] });
 }
+/* Two columns: a bold label and a plain value, the way the council's
+   printed forms are set out. */
+function labelTable(rows){
+  return new docx.Table({
+    width:{ size:100, type:docx.WidthType.PERCENTAGE },
+    rows: rows.map(r => new docx.TableRow({
+      children:[ tcell(r[0], true), tcell(r[1], false) ] }))
+  });
+}
 function simpleTable(rows){
   return new docx.Table({
     width:{ size:100, type:docx.WidthType.PERCENTAGE },
@@ -7129,7 +7976,7 @@ async function pagePrograms(v){
       + '<div class="scroll' + (rows.length > 12 ? ' tall' : '') + '"><table class="ledger" id="tbl-prog"><thead><tr>'
       + sortableTh('tbl-prog', 0, 'Programme') + sortableTh('tbl-prog', 1, 'Portfolio')
       + sortableTh('tbl-prog', 2, 'Origin') + sortableTh('tbl-prog', 3, 'Dates')
-      + '<th>Venue</th><th>Permission</th>' + sortableTh('tbl-prog', 6, 'Status') + '<th></th></tr></thead><tbody>'
+      + '<th>Venue</th><th>Permission</th>' + sortableTh('tbl-prog', 6, 'Status') + '<th>People</th></tr></thead><tbody>'
       + rows.map(p => {
         let prfCell = '<span class="tag t-grey">Not needed</span>';
         if (p.requires_prf){
@@ -7145,13 +7992,200 @@ async function pagePrograms(v){
         + '<td>' + (p.source === 'parent_body' ? 'Parent body' : 'LEB') + '</td>'
         + '<td>' + fmtDate(p.start_date) + (p.end_date ? '<div class="mini">to ' + fmtDate(p.end_date) + '</div>' : '') + '</td>'
         + '<td>' + esc(p.venue || '—') + '</td><td>' + prfCell + '</td><td>' + statusTag(p.status) + '</td>'
-        + '<td style="width:1%;white-space:nowrap"><button class="btn sm send" onclick="openShare(\'program\',\'' + p.id + '\')">Send</button> '
+        + '<td style="width:1%;white-space:nowrap">'
+        + '<button class="btn sm" onclick="openParticipants(\'' + p.id + '\')">People</button> '
+        + '<button class="btn sm send" onclick="openShare(\'program\',\'' + p.id + '\')">Send</button> '
         + '<button class="btn sm ghost" onclick="editProgram(\'' + p.id + '\')">Edit</button> '
         + '<button class="btn sm danger" onclick="delRow(\'programs\',\'' + p.id + '\')">&times;</button></td></tr>';
       }).join('') + '</tbody></table></div>';
   }
   h += '</div></div>'; v.innerHTML = h;
 }
+/* ---------------------------------------------------------------------
+   Who came to a programme.
+
+   The registration sheets the board is handed carry the person's name,
+   email, age and WhatsApp number but never the fee, so the fee and
+   whether it has been paid are filled in here afterwards.
+   --------------------------------------------------------------------- */
+const partState = { programId:null, rows:[] };
+
+async function openParticipants(programId){
+  const [progs, people] = await Promise.all([
+    sList('programs'),
+    db.list('program_participants', { program_id:programId }).catch(err => {
+      const m = String(err && err.message || err);
+      if (/does not exist|schema cache|relation/i.test(m)) return null;
+      throw err;
+    })
+  ]);
+  const p = progs.find(x => x.id === programId);
+  if (!p){ toast('That programme is no longer here'); return; }
+  if (people === null){
+    openModal('People', '<div class="note warn"><b>This table is not in your database yet.</b><br>'
+      + 'Run <code>setup-all.sql</code> in the Supabase SQL editor.</div>');
+    return;
+  }
+  partState.programId = programId;
+  partState.rows = people.slice().sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+  openModal('People · ' + p.title, participantsBody(), null);
+}
+
+function participantsBody(){
+  const list = partState.rows;
+  const fees = list.reduce((t,x) => t + num(x.fee), 0);
+  const got  = list.filter(x => x.paid).reduce((t,x) => t + num(x.fee), 0);
+  const unpaid = list.filter(x => !x.paid && num(x.fee)).length;
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Registered</div><div class="v">' + list.length + '</div></div>'
+    + '<div><div class="k">Fees due</div><div class="v">Rs ' + money(fees) + '</div></div>'
+    + '<div><div class="k">Received</div><div class="v">Rs ' + money(got) + '</div></div>'
+    + '<div><div class="k">Outstanding</div><div class="v">Rs ' + money(fees - got)
+      + (unpaid ? '<span class="mini"> · ' + unpaid + ' unpaid</span>' : '') + '</div></div>'
+    + '</div>';
+
+  h += '<div class="send-row" style="border-top:none;padding-top:10px;margin-bottom:12px">'
+    + '<button class="btn sm" onclick="editParticipant()">Add a person</button>'
+    + '<button class="btn sm ghost" onclick="openImport(\'program_participants\',\''
+      + partState.programId + '\')">Import from Excel</button>'
+    + '<button class="btn sm ghost" onclick="exportParticipants()">Download</button>'
+    + '<button class="btn sm send" onclick="openShare(\'program_participants\',\''
+      + partState.programId + '\')">Send list</button>'
+    + (list.length ? '<button class="btn sm ghost" onclick="setAllFees()">Set the fee for everyone</button>' : '')
+    + '</div>';
+
+  if (!list.length){
+    h += '<div class="empty"><p>Nobody registered yet.</p>'
+      + '<p class="mini">Bring the registration sheet in from Excel — name, email, age and '
+      + 'WhatsApp number are read from it. Fees are added here afterwards.</p></div>';
+    return h + '<div id="part-body"></div>';
+  }
+
+  h += '<div class="scroll' + (list.length > 10 ? ' tall' : '') + '">'
+    + '<table class="ledger"><thead><tr><th class="sn">#</th><th>Full name</th><th>Email</th>'
+    + '<th class="num">Age</th><th>WhatsApp</th><th class="num">Fees</th><th>Paid</th><th></th></tr></thead><tbody>'
+    + list.map((x,i) => '<tr><td>' + (i+1) + '</td>'
+      + '<td>' + esc(x.full_name) + '</td>'
+      + '<td>' + esc(x.email || '—') + '</td>'
+      + '<td class="num">' + (num(x.age) ? num(x.age) : '—') + '</td>'
+      + '<td>' + esc(x.whatsapp || '—') + '</td>'
+      + '<td class="num"><input type="number" style="width:94px" value="'
+        + (num(x.fee) || '') + '" onchange="saveParticipantFee(\'' + x.id + '\',this.value)"></td>'
+      + '<td><button class="btn sm ' + (x.paid ? 'gold' : 'ghost') + '" '
+        + 'onclick="toggleParticipantPaid(\'' + x.id + '\')">'
+        + (x.paid ? 'Paid' : 'Unpaid') + '</button></td>'
+      + '<td style="width:1%;white-space:nowrap">'
+      + '<button class="btn sm ghost" onclick="editParticipant(\'' + x.id + '\')">Edit</button> '
+      + '<button class="btn sm danger" onclick="delParticipant(\'' + x.id + '\')">&times;</button>'
+      + '</td></tr>').join('')
+    + '</tbody><tfoot><tr><td></td><td>Total (' + list.length + ')</td><td colspan="3"></td>'
+    + '<td class="num">Rs ' + money(fees) + '</td><td colspan="2"></td></tr></tfoot></table></div>';
+  return h;
+}
+
+/* Redraws the list inside the open dialog without closing it. */
+async function refreshParticipants(){
+  partState.rows = (await db.list('program_participants', { program_id:partState.programId }))
+    .slice().sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+  const veil = document.getElementById('veil');
+  const box = veil && veil.querySelector('.content');
+  if (box) box.innerHTML = participantsBody();
+}
+
+async function saveParticipantFee(id, value){
+  savingStart();
+  try{ await db.update('program_participants', id, { fee:num(value) }); savingDone(true); }
+  catch(e){ savingDone(false); toast('Could not save that fee'); return; }
+  await refreshParticipants();
+}
+async function toggleParticipantPaid(id){
+  const row = partState.rows.find(x => x.id === id);
+  if (!row) return;
+  const now = !row.paid;
+  savingStart();
+  try{
+    await db.update('program_participants', id, { paid:now, paid_on: now ? todayISO() : null });
+    savingDone(true);
+  }catch(e){ savingDone(false); toast('Could not save that'); return; }
+  await refreshParticipants();
+}
+async function delParticipant(id){
+  const row = partState.rows.find(x => x.id === id);
+  if (!row) return;
+  await db.remove('program_participants', id);
+  await refreshParticipants();
+  toast(esc(row.full_name || 'Person') + ' removed');
+}
+
+async function editParticipant(id){
+  const x = id ? partState.rows.find(r => r.id === id) : {};
+  if (id && !x) return;
+  const next = Math.max(0, ...partState.rows.map(r => num(r.serial_no))) + 1;
+  const pid = partState.programId;
+  const back = partState.rows.slice();
+  openModal(id ? 'Edit person' : 'Add a person',
+    '<div class="grid g2">' + fld('pp-name','Full name', x.full_name)
+    + fld('pp-email','Email', x.email, 'email') + '</div>'
+    + '<div class="grid g3">' + fld('pp-age','Age', x.age, 'number')
+    + fld('pp-wa','WhatsApp number', x.whatsapp)
+    + fld('pp-fee','Fees (Rs)', x.fee, 'number') + '</div>'
+    + '<div class="grid g2">'
+    + sel('pp-paid','Paid', [['no','Unpaid'],['yes','Paid']], x.paid ? 'yes' : 'no')
+    + fld('pp-remarks','Remarks', x.remarks) + '</div>',
+    async () => {
+      const name = mv('pp-name');
+      if (!name){ toast('A name is needed'); return; }
+      const paid = mv('pp-paid') === 'yes';
+      const row = { full_name:name, email:mv('pp-email'), age:num(mv('pp-age')) || null,
+        whatsapp:mv('pp-wa'), fee:num(mv('pp-fee')), paid:paid,
+        paid_on: paid ? (x.paid_on || todayISO()) : null, remarks:mv('pp-remarks') };
+      if (id) await db.update('program_participants', id, row);
+      else await db.insert('program_participants',
+        stampArea(Object.assign({ program_id:pid, serial_no:next }, row)));
+      closeModal();
+      partState.programId = pid; partState.rows = back;
+      toast(id ? 'Updated' : 'Added');
+      await openParticipants(pid);
+    });
+}
+
+/* Most programmes charge everybody the same, so this saves typing it
+   out line by line. It leaves anybody already marked paid alone. */
+async function setAllFees(){
+  const pid = partState.programId;
+  const rows = partState.rows.slice();
+  openModal('Set the fee for everyone',
+    '<p style="margin-top:0">This writes the same fee onto all ' + rows.length
+      + ' people on the list. Anyone already marked paid keeps the fee they were charged.</p>'
+    + fld('pf-fee','Fees (Rs)', '', 'number'),
+    async () => {
+      const fee = num(mv('pf-fee'));
+      const touch = rows.filter(r => !r.paid);
+      for (const r of touch) await db.update('program_participants', r.id, { fee:fee });
+      closeModal();
+      toast('Fee set for ' + touch.length + ' ' + (touch.length === 1 ? 'person' : 'people'));
+      await openParticipants(pid);
+    }, 'Set the fee');
+}
+
+async function exportParticipants(){
+  const progs = await sList('programs');
+  const p = progs.find(x => x.id === partState.programId);
+  const list = partState.rows;
+  await qspTuiSheet({
+    sheetName:'Participants',
+    title:(p ? p.title : 'Programme') + ' — people registered',
+    header:['Sr.#','Full Name','Email','Age','WhatsApp Number','Fees','Paid / Unpaid','Paid On'],
+    widths:[7,28,30,7,20,13,14,14],
+    rows:list.map((x,i) => [i+1, x.full_name, x.email || '', num(x.age) || '',
+      x.whatsapp || '', num(x.fee) || 0, x.paid ? 'Paid' : 'Unpaid', x.paid_on || '']),
+    total:['', 'Total (' + list.length + ')', '', '', '',
+      list.reduce((t,x) => t + num(x.fee), 0), '', ''],
+    filename:(p ? p.title.replace(/[^A-Za-z0-9]+/g,'_') : 'Programme') + '_Participants.xlsx'
+  });
+}
+
 async function editProgram(id){
   const p = id ? (await db.list('programs')).find(x => x.id === id)
     : { type:'program', source:'leb', status:'planned', requires_prf:true, portfolio_id:defaultPortfolio() };
@@ -7437,9 +8471,14 @@ async function buildQuarter(q, y){
   for (const c of inQ){
     const es = grouped[c.id] || [];
     const t = k => es.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
+    /* Derived from the sheet list rather than named one by one: when a
+       sheet is added, its money has to reach the parent body's report
+       without anyone remembering to come back here. */
+    const bySheet = {};
+    SHEET_KEYS.forEach(k => bySheet[k] = t(k));
     perMonth.push({ month:MONTHS[c.month-1], status:c.status, students:es.length,
-      pak:t('pak_progressive'), tui:t('tuition'), uni:t('university'),
-      total:t('pak_progressive') + t('tuition') + t('university') });
+      bySheet:bySheet,
+      total:SHEET_KEYS.reduce((sum,k) => sum + bySheet[k], 0) });
   }
   const qCases = cases.filter(c => c.meeting_date >= from && c.meeting_date <= to);
   const qProgs = programs.filter(p => {
@@ -7476,17 +8515,16 @@ async function pageReport(v){
     + '<div><div class="k">Programmes</div><div class="v">' + d.qProgs.length + '</div></div></div><div style="height:20px"></div>';
 
   h += '<div class="panel"><h2>Financial assistance by month</h2><div class="body flush"><div class="scroll">'
-    + '<table class="ledger"><thead><tr><th>Month</th><th class="num">Pak Progressive</th><th class="num">Tuition</th>'
-    + '<th class="num">University &amp; others</th><th class="num">Total</th><th class="num">Students</th><th>Sheet</th></tr></thead><tbody>'
-    + (d.perMonth.length ? d.perMonth.map(m => '<tr><td>' + m.month + '</td><td class="num">' + money(m.pak) + '</td>'
-        + '<td class="num">' + money(m.tui) + '</td><td class="num">' + money(m.uni) + '</td>'
+    + '<table class="ledger"><thead><tr><th>Month</th>'
+    + SHEET_KEYS.map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
+    + '<th class="num">Total</th><th class="num">Students</th><th>Sheet</th></tr></thead><tbody>'
+    + (d.perMonth.length ? d.perMonth.map(m => '<tr><td>' + m.month + '</td>'
+        + SHEET_KEYS.map(k => '<td class="num">' + money(m.bySheet[k]) + '</td>').join('')
         + '<td class="num">' + money(m.total) + '</td><td class="num">' + m.students + '</td>'
         + '<td>' + statusTag(m.status) + '</td></tr>').join('')
-      : '<tr><td colspan="7"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
+      : '<tr><td colspan="' + (SHEET_KEYS.length + 4) + '"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
     + '</tbody><tfoot><tr><td>Quarter total</td>'
-    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.pak,0)) + '</td>'
-    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.tui,0)) + '</td>'
-    + '<td class="num">' + money(d.perMonth.reduce((s,m)=>s+m.uni,0)) + '</td>'
+    + SHEET_KEYS.map(k => '<td class="num">' + money(sheetSum(d.perMonth, k)) + '</td>').join('')
     + '<td class="num">' + money(d.grand) + '</td><td class="num">' + d.beneficiaries + '</td><td></td></tr></tfoot></table>'
     + '</div></div></div>';
 
@@ -7514,9 +8552,11 @@ async function exportReport(){
       para('Quarterly Report · ' + label, { bold:true, center:true, size:24 }),
       new docx.Paragraph({ text:'' }),
       heading('1. Financial assistance'),
-      simpleTable([['Month','Pak Progressive','Tuition (LEB share)','University & others','Total','Students']]
-        .concat(d.perMonth.map(m => [m.month, money(m.pak), money(m.tui), money(m.uni), money(m.total), String(m.students)]))
-        .concat([['Total','','','', money(d.grand), String(d.beneficiaries)]])),
+      simpleTable([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+        .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
+          .concat([money(m.total), String(m.students)])))
+        .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
+          .concat([money(d.grand), String(d.beneficiaries)])])),
       heading('2. Cases heard on Tuesday sittings'),
       simpleTable([['Measure','Count'],
         ['Cases heard', String(d.caseStats.total)], ['Approved', String(d.caseStats.approved)],
@@ -7544,9 +8584,11 @@ async function exportReport(){
       + rows.slice(1).map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</table>';
     return '<p align="center"><b>Local Education Board — Kharadar</b><br><b>Quarterly Report · ' + esc(label) + '</b></p>'
       + '<h4>1. Financial assistance</h4>'
-      + tbl([['Month','Pak Progressive','Tuition','University & others','Total','Students']]
-          .concat(d.perMonth.map(m => [m.month, money(m.pak), money(m.tui), money(m.uni), money(m.total), String(m.students)]))
-          .concat([['Total','','','', money(d.grand), String(d.beneficiaries)]]))
+      + tbl([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+          .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
+            .concat([money(m.total), String(m.students)])))
+          .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
+            .concat([money(d.grand), String(d.beneficiaries)])]))
       + '<h4>2. Cases heard</h4>'
       + tbl([['Measure','Count'],['Cases heard',String(d.caseStats.total)],['Approved',String(d.caseStats.approved)],
           ['Forwarded',String(d.caseStats.forwarded)],['Deferred',String(d.caseStats.deferred)],
