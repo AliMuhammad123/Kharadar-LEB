@@ -1,0 +1,77 @@
+name: Roshan Android build
+
+on:
+  push:
+    paths:
+      - 'roshan/**'
+      - '.github/workflows/roshan-android.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: roshan
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_KEYSTORE: ${{ secrets.ROSHAN_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            roshan/package-lock.json
+            roshan/tests/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
+
+      - name: Smoke test all twelve levels
+        working-directory: roshan/tests
+        run: npm ci && node smoke.js
+
+      - name: Install Capacitor and sync web assets
+        run: npm ci && npx cap sync android
+
+      - name: Debug APK
+        working-directory: roshan/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Restore release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        run: echo "${{ secrets.ROSHAN_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/roshan.keystore"
+
+      - name: Signed release AAB and APK
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: roshan/android
+        env:
+          ROSHAN_KEYSTORE_PATH: ${{ runner.temp }}/roshan.keystore
+          ROSHAN_KEYSTORE_PASSWORD: ${{ secrets.ROSHAN_KEYSTORE_PASSWORD }}
+          ROSHAN_KEY_ALIAS: ${{ secrets.ROSHAN_KEY_ALIAS }}
+          ROSHAN_KEY_PASSWORD: ${{ secrets.ROSHAN_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon bundleRelease assembleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roshan-debug-apk
+          path: roshan/android/app/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          name: roshan-release
+          path: |
+            roshan/android/app/build/outputs/bundle/release/*.aab
+            roshan/android/app/build/outputs/apk/release/*.apk

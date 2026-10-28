@@ -1,0 +1,12 @@
+{
+  "appId": "pk.roshan.app",
+  "appName": "Roshan",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
