@@ -7413,7 +7413,7 @@ async function runImport(){
   let n = feeState.entries.filter(e => e.sheet === sheet).length;
   rows.forEach(r => {
     if (r.dob) r.dob = dmyDate(r.dob);
-    // Excel drops the leading 0 from mobile numbers: 3410084530 -> 03410084530
+    // Excel drops the leading 0 from mobile numbers: 3001234567 -> 03001234567
     if (r.contact && /^3\d{9}$/.test(String(r.contact).trim())) r.contact = '0' + String(r.contact).trim();
   });
   await db.insertMany('fee_entries',
