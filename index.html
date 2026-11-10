@@ -11,6 +11,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The records here are confidential. This page may only send data to
+     Supabase, and may only run scripts from itself and jsDelivr. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Aga Khan Education Board for Kharadar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,8 +25,11 @@
       rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <script src="config.js" onerror="window.LEB_CONFIG_404=true"></script>
-<!-- deferred: the page draws before this arrives, and boot() waits for it. -->
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- deferred: the page draws before this arrives, and boot() waits for it.
+     Pinned to one version with an integrity hash: the browser refuses the
+     file if a single byte differs from the release that was checked. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"
+  integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
 <style>
 :root{
   --ease:cubic-bezier(.22,1,.36,1);
@@ -680,10 +687,11 @@ function columnLetter(n){
 }
 
 const _scripts = {};
-function loadScript(src){
+function loadScript(src, integrity){
   if (_scripts[src]) return _scripts[src];
   _scripts[src] = new Promise((resolve, reject) => {
     const el = document.createElement('script');
+    if (integrity){ el.integrity = integrity; el.crossOrigin = 'anonymous'; }
     el.src = src;
     el.onload = resolve;
     el.onerror = () => { delete _scripts[src]; reject(new Error('Could not load ' + src)); };
@@ -694,12 +702,14 @@ function loadScript(src){
 async function needExcel(){
   if (typeof ExcelJS !== 'undefined') return;
   toast('Preparing the spreadsheet tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+    'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz');
 }
 async function needDocx(){
   if (typeof docx !== 'undefined') return;
   toast('Preparing the document tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js',
+    'sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh');
 }
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -5606,7 +5616,8 @@ let feeColsReady = null;
 async function feeColsMissing(){
   if (LOCAL) return false;
   if (feeColsReady === null){
-    const { error } = await sb.from('fee_entries').select(FEE_EXTRA.join(',')).limit(1);
+    // limit(0): checks the columns exist without fetching anyone's record
+    const { error } = await sb.from('fee_entries').select(FEE_EXTRA.join(',')).limit(0);
     feeColsReady = !error;
   }
   return !feeColsReady;
