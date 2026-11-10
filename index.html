@@ -11,6 +11,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The records here are confidential. This page may only send data to
+     Supabase, and may only run scripts from itself and jsDelivr. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Aga Khan Education Board for Kharadar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,8 +25,11 @@
       rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <script src="config.js" onerror="window.LEB_CONFIG_404=true"></script>
-<!-- deferred: the page draws before this arrives, and boot() waits for it. -->
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- deferred: the page draws before this arrives, and boot() waits for it.
+     Pinned to one version with an integrity hash: the browser refuses the
+     file if a single byte differs from the release that was checked. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"
+  integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
 <style>
 :root{
   --ease:cubic-bezier(.22,1,.36,1);
@@ -680,10 +687,11 @@ function columnLetter(n){
 }
 
 const _scripts = {};
-function loadScript(src){
+function loadScript(src, integrity){
   if (_scripts[src]) return _scripts[src];
   _scripts[src] = new Promise((resolve, reject) => {
     const el = document.createElement('script');
+    if (integrity){ el.integrity = integrity; el.crossOrigin = 'anonymous'; }
     el.src = src;
     el.onload = resolve;
     el.onerror = () => { delete _scripts[src]; reject(new Error('Could not load ' + src)); };
@@ -694,21 +702,30 @@ function loadScript(src){
 async function needExcel(){
   if (typeof ExcelJS !== 'undefined') return;
   toast('Preparing the spreadsheet tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+    'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz');
 }
 async function needDocx(){
   if (typeof docx !== 'undefined') return;
   toast('Preparing the document tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js',
+    'sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh');
 }
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+/* Each area keeps its own set of sheets. `file` groups the tabs that go
+   out together in one Excel download; `noSpend` marks a sheet whose
+   figures are not money the board paid out (dues owed, for instance). */
 const SHEETS = {
-  pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive' },
-  tuition:         { label:'Tuition fees',                      short:'Tuition' },
-  university:      { label:'University & others',               short:'University & others' },
-  other_support:   { label:'Other support matters',             short:'Other support' }
+  pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive', area:'kharadar' },
+  tuition:         { label:'Tuition fees',                      short:'Tuition',         area:'kharadar' },
+  university:      { label:'University & others',               short:'University & others', area:'kharadar' },
+  other_support:   { label:'Other support matters',             short:'Other support',   area:'kharadar' },
+  korangi_college: { label:'College fees',  short:'Korangi college', area:'korangi', file:'college' },
+  korangi_qes:     { label:'QES',           short:'Korangi QES',     area:'korangi', file:'qes', wide:1950 },
+  korangi_qes2:    { label:'QES list 2',    short:'QES list 2 dues', area:'korangi', file:'qes', wide:1450, noSpend:true }
 };
+const sheetsOf = area => Object.keys(SHEETS).filter(k => SHEETS[k].area === area);
 
 let sb = null, LOCAL = true, ME = { id:null, name:'', role:'chairperson',
   area_id:null, portfolio_id:null, finance_access:true };
@@ -1264,7 +1281,7 @@ async function pageAreas(v){
   for (const a of ORG.areas){
     const cyc = cycles.find(c => c.area_id === a.id && c.month === m && c.year === y);
     const entries = cyc ? await db.list('fee_entries', { cycle_id:cyc.id }) : [];
-    const spent = entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
+    const spent = entries.reduce((s,e) => s + spendOf(e), 0);
     const due = live.filter(d => !d.target_area || d.target_area === a.id);
     const done = due.filter(d => reads.some(r => r.directive_id === d.id && r.area_id === a.id));
     rows.push({
@@ -3718,7 +3735,6 @@ async function natData(){
    monthly sheets are set up; the others are added as their formats come.
    ===================================================================== */
 const feeMatters = { sub:'sheets' };
-const FEE_SHEET_AREAS = ['kharadar'];
 
 async function pageFeesMatters(v){
   const tabs = [['sheets','Fee sheets'],['students','Student register']]
@@ -3732,11 +3748,11 @@ async function pageFeesMatters(v){
   const body = $('fm-body');
 
   if (feeMatters.sub === 'sheets'){
-    if (FEE_SHEET_AREAS.indexOf(SCOPE.area) < 0){
+    if (!sheetsOf(SCOPE.area).length){
       body.innerHTML = head('Fee sheets', '')
         + '<div class="panel"><div class="empty">'
         + '<p><b>' + esc(areaName(SCOPE.area)) + ' has no fee sheets set up yet.</b></p>'
-        + '<p class="mini">Each area runs its fees its own way. Kharadar\u2019s three monthly sheets are '
+        + '<p class="mini">Each area runs its fees its own way. Kharadar\u2019s and Korangi\u2019s sheets are '
         + 'built; send the sheet ' + esc(areaName(SCOPE.area)) + ' uses and it will be added in the same form.</p>'
         + '</div></div>';
       return;
@@ -5406,7 +5422,7 @@ async function pageDash(v){
   ]);
   const cur = cycles.find(c => c.month === now.getMonth()+1 && c.year === now.getFullYear());
   let entries = cur ? await db.list('fee_entries', { cycle_id: cur.id }) : [];
-  const disbursed = entries.reduce((s,e) => s + (e.sheet === 'pak_progressive' ? num(e.fee_amount) : num(e.leb_contribution)), 0);
+  const disbursed = entries.reduce((s,e) => s + spendOf(e), 0);
   const pending = cases.filter(c => c.decision === 'pending' || c.decision === 'deferred');
   const live = programs.filter(p => p.status === 'ongoing' || p.status === 'planned' || p.status === 'prf_pending');
 
@@ -5545,7 +5561,48 @@ const COLS = {
       opts:['Paid','Unpaid','Pending'] }
   ]
 };
-const totalKey = s => s === 'pak_progressive' ? 'fee_amount' : 'leb_contribution';
+/* Korangi's two files, column for column. `x` is the heading used in the
+   Excel file itself, which is what an import looks for. */
+COLS.korangi_college = [
+  { k:'student_name',     h:'Name of Student', w:'32%' },
+  { k:'school',           h:'College',         w:'32%' },
+  { k:'class_grade',      h:'Grade',           w:'12%' },
+  { k:'leb_contribution', h:'Total Amount',    w:'16%', type:'number' }
+];
+COLS.korangi_qes = [
+  { k:'student_name',   h:'Name',            x:'NAME',     w:'10%' },
+  { k:'dob',            h:'Date of birth',   x:'DOB',      w:'8%' },
+  { k:'b_form',         h:'B-Form no.',      x:'B.FORM #', w:'11%' },
+  { k:'father_name',    h:'Father',          x:'F.NAME',   w:'10%' },
+  { k:'father_cnic',    h:'Father CNIC',     x:'F.CNIC',   w:'11%' },
+  { k:'contact',        h:'Contact',         x:'CONTACT',  w:'8%' },
+  { k:'class_grade',    h:'Class',           x:'CLASS',    w:'5%' },
+  { k:'school',         h:'Current school',  x:'C.SCHOOL', w:'7%' },
+  { k:'prev_school',    h:'Previous school', x:'P.SCHOOL', w:'10%' },
+  { k:'tuition_fee',    h:'T. fee',          x:'T.FEE',    w:'6%', type:'number' },
+  { k:'fee_amount',     h:'S. fee',          x:'S.FEE',    w:'6%', type:'number' },
+  { k:'swb_assistance', h:'SWB assistance',  x:'SWB.ASS',  w:'8%', type:'number' }
+];
+COLS.korangi_qes2 = [
+  { k:'student_name', h:'Name',        x:'NAME',      w:'13%' },
+  { k:'dob',          h:'Date of birth', x:'DOB',     w:'10%' },
+  { k:'cnic',         h:'CNIC',        x:'CNIC',      w:'13%' },
+  { k:'father_name',  h:'Father',      x:'F.NAME',    w:'13%' },
+  { k:'father_cnic',  h:'Father CNIC', x:'F.CNIC',    w:'13%' },
+  { k:'contact',      h:'Contact',     x:'CONTACT',   w:'11%' },
+  { k:'class_grade',  h:'Class',       x:'CLASS',     w:'7%' },
+  { k:'unit',         h:'Unit',        x:'UNIT',      w:'9%' },
+  { k:'fee_dues',     h:'Fee dues',    x:'FEE DUES',  w:'10%', type:'number' }
+];
+/* Columns added for Korangi (korangi-fees.sql). Only copied or written
+   when a row has them, so Kharadar keeps working on a database that has
+   not been updated yet. */
+const FEE_EXTRA = ['dob','b_form','cnic','father_name','father_cnic','contact','prev_school','unit',
+                   'tuition_fee','swb_assistance','fee_dues'];
+const TOTAL_KEY = { pak_progressive:'fee_amount', korangi_qes:'fee_amount', korangi_qes2:'fee_dues' };
+const totalKey = s => TOTAL_KEY[s] || 'leb_contribution';
+/* What a row cost the board, for the totals that leave the fee page. */
+const spendOf = e => (SHEETS[e.sheet] && SHEETS[e.sheet].noSpend) ? 0 : num(e[totalKey(e.sheet)]);
 
 async function loadCycle(){
   const all = await sList('fee_cycles');
@@ -5553,9 +5610,26 @@ async function loadCycle(){
   feeState.entries = feeState.cycle ? await db.list('fee_entries', { cycle_id: feeState.cycle.id }) : [];
 }
 
+/* Korangi's sheets need columns Kharadar's never did. Asked once per
+   session, so the page can say what to run instead of failing on save. */
+let feeColsReady = null;
+async function feeColsMissing(){
+  if (LOCAL) return false;
+  if (feeColsReady === null){
+    // limit(0): checks the columns exist without fetching anyone's record
+    const { error } = await sb.from('fee_entries').select(FEE_EXTRA.join(',')).limit(0);
+    feeColsReady = !error;
+  }
+  return !feeColsReady;
+}
+
 async function pageFees(v){
+  const mine = sheetsOf(SCOPE.area);
+  if (mine.indexOf(feeState.sheet) < 0) feeState.sheet = mine[0];
   await loadCycle();
   const c = feeState.cycle, locked = c && c.status === 'submitted';
+  const extraMissing = mine.some(k => COLS[k].some(col => FEE_EXTRA.indexOf(col.k) >= 0))
+    && await feeColsMissing();
 
   const picker = '<select id="f-month" onchange="feeState.month=+this.value;render()">'
       + MONTHS.map((m,i) => '<option value="' + (i+1) + '"' + (feeState.month === i+1 ? ' selected' : '') + '>' + m + '</option>').join('')
@@ -5567,6 +5641,10 @@ async function pageFees(v){
   let h = head('Fee sheets — ' + (SCOPE.area === 'jurisdiction' || SCOPE.area === 'all' ? 'Jurisdiction' : areaName(SCOPE.area)), 'One month at a time. Edit here, then download the workbook exactly as your parent body expects it.',
     '<div style="width:140px">' + picker + '</div><div style="width:96px">' + ypicker + '</div>'
     + (c ? '<button class="btn gold" onclick="exportWorkbook()">Download Excel</button>' : ''));
+
+  if (extraMissing) h += '<div class="note warn"><b>The database needs a small update for these sheets.</b> '
+    + 'Open the Supabase SQL editor, paste the contents of <code>korangi-fees.sql</code> and press Run. '
+    + 'Until then, the extra columns (date of birth, B-Form, father, contact and the fees) cannot be saved.</div>';
 
   if (!c){
     h += '<div class="panel"><div class="empty"><p>No sheet exists for ' + MONTHS[feeState.month-1] + ' ' + feeState.year + ' yet.</p>'
@@ -5580,7 +5658,7 @@ async function pageFees(v){
     + '<button class="btn sm ghost" onclick="setCycleStatus(\'finalized\')">Reopen</button></div>';
 
   const bySheet = k => feeState.entries.filter(e => e.sheet === k);
-  const grand = feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
+  const grand = feeState.entries.reduce((s,e) => s + spendOf(e), 0);
 
   h += '<div class="panel"><h2>' + MONTHS[c.month-1] + ' ' + c.year + ' ' + statusTag(c.status)
      + '<span class="actions">'
@@ -5591,24 +5669,27 @@ async function pageFees(v){
         : '')
      + '</span></h2>'
      + '<div class="body flush"><div class="tabs">'
-     + Object.keys(SHEETS).map(k => '<button class="' + (feeState.sheet === k ? 'on' : '') + '" onclick="feeState.sheet=\'' + k + '\';render()">'
+     + mine.map(k => '<button class="' + (feeState.sheet === k ? 'on' : '') + '" onclick="feeState.sheet=\'' + k + '\';render()">'
          + SHEETS[k].label + ' <span class="mini">(' + bySheet(k).length + ')</span></button>').join('')
      + '</div>' + sheetTable(feeState.sheet, locked) + '</div></div>';
 
-  h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v" id="tot-pak">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
-     + '<div><div class="k">Tuition \u2014 LEB share</div><div class="v" id="tot-tui">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
-     + '<div><div class="k">University &amp; others</div><div class="v" id="tot-uni">Rs ' + money(sheetTotal('university')) + '</div></div>'
-     + '<div><div class="k">Other support</div><div class="v" id="tot-oth">Rs ' + money(sheetTotal('other_support')) + '</div></div>'
+  h += '<div class="stats">'
+     + mine.map(k => '<div><div class="k">' + esc(STAT_LABEL[k] || SHEETS[k].label) + '</div>'
+         + '<div class="v" id="tot-' + k + '">Rs ' + money(sheetTotal(k)) + '</div></div>').join('')
      + '<div><div class="k">Month total</div><div class="v" id="tot-grand">Rs ' + money(grand) + '</div></div></div>';
   v.innerHTML = h;
 }
-function sheetTotal(k){
-  return feeState.entries.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
+const STAT_LABEL = { pak_progressive:'Pak Progressive total', tuition:'Tuition \u2014 LEB share',
+  university:'University & others', other_support:'Other support',
+  korangi_college:'College fees', korangi_qes:'QES \u2014 school fees', korangi_qes2:'QES list 2 \u2014 dues (not paid out)' };
+function sheetTotal(k, key){
+  return feeState.entries.filter(e => e.sheet === k).reduce((s,e) => s + num(e[key || totalKey(k)]), 0);
 }
 function sheetTable(k, locked){
   const cols = COLS[k];
   const rows = feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
-  let h = '<div class="scroll' + (rows.length > 14 ? ' tall' : '') + '"><table class="ledger"><thead><tr><th class="sn">S.No</th>'
+  let h = '<div class="scroll' + (rows.length > 14 ? ' tall' : '') + '"><table class="ledger"'
+    + (SHEETS[k].wide ? ' style="min-width:' + SHEETS[k].wide + 'px"' : '') + '><thead><tr><th class="sn">S.No</th>'
     + cols.map(c => '<th style="width:' + c.w + '"' + (c.type === 'number' ? ' class="num"' : '') + '>' + esc(c.h) + '</th>').join('')
     + (locked ? '' : '<th style="width:1%"></th>') + '</tr></thead><tbody>';
   if (!rows.length){
@@ -5622,7 +5703,7 @@ function sheetTable(k, locked){
   });
   h += '</tbody><tfoot><tr><td></td>'
     + cols.map(c => '<td' + (c.type === 'number' ? ' class="num"' : '') + '>'
-        + (c.k === totalKey(k) ? '<span id="sheet-total">Rs ' + money(sheetTotal(k)) + '</span>'
+        + (c.type === 'number' ? '<span id="col-total-' + c.k + '">Rs ' + money(sheetTotal(k, c.k)) + '</span>'
            : (c.k === cols[0].k ? 'Total (' + rows.length + ' students)' : '')) + '</td>').join('')
     + (locked ? '' : '<td></td>') + '</tr></tfoot></table></div>';
   if (!locked) h += '<div style="padding:12px 16px;border-top:1px solid var(--line)">'
@@ -5650,12 +5731,12 @@ async function createCycle(carry){
     const prev = all.find(c => (c.year*12+c.month) < (cycle.year*12+cycle.month));
     if (prev){
       const old = await db.list('fee_entries', { cycle_id: prev.id });
-      await db.insertMany('fee_entries', old.map(e => ({
+      await db.insertMany('fee_entries', old.map(e => Object.assign({
         cycle_id:cycle.id, sheet:e.sheet, serial_no:e.serial_no, student_id:e.student_id || null,
         student_name:e.student_name, school:e.school, class_grade:e.class_grade,
         fee_amount:e.fee_amount, leb_contribution:e.leb_contribution, parent_contribution:e.parent_contribution,
         full_fee:e.full_fee, tuition_teacher:e.tuition_teacher, status:e.status, result:'', remarks:''
-      })));
+      }, FEE_EXTRA.reduce((x,k) => { if (e[k] != null && e[k] !== '') x[k] = e[k]; return x; }, {}))));
       toast('Carried forward ' + old.length + ' rows from ' + MONTHS[prev.month-1]);
     } else toast('No earlier sheet to carry forward from');
   }
@@ -5666,7 +5747,7 @@ async function setCycleStatus(s){
   toast(s === 'submitted' ? 'Marked submitted' : 'Status updated'); render();
 }
 async function addEntry(){
-  const k = feeState.sheet;
+  const k = feeState.sheet;  /* status only means something on Kharadar's sheets */
   const n = feeState.entries.filter(e => e.sheet === k).length + 1;
   await db.insert('fee_entries', { cycle_id:feeState.cycle.id, sheet:k, serial_no:n,
     status: k === 'pak_progressive' ? 'Paid' : '', result:'' });
@@ -5675,7 +5756,7 @@ async function addEntry(){
 async function saveCell(id, key, val){
   const e = feeState.entries.find(x => x.id === id);
   if (e) e[key] = val;
-  if (key.indexOf('contribution') >= 0 || key.indexOf('fee') >= 0) refreshTotals();
+  if (COLS[feeState.sheet].some(c => c.k === key && c.type === 'number')) refreshTotals();
   savingStart();
   try{
     await db.update('fee_entries', id, { [key]: val });
@@ -5689,12 +5770,10 @@ async function saveCell(id, key, val){
 // and the cursor stays where you put it.
 function refreshTotals(){
   const put = (id, val) => { const el = $(id); if (el) el.textContent = 'Rs ' + money(val); };
-  put('sheet-total', sheetTotal(feeState.sheet));
-  put('tot-pak', sheetTotal('pak_progressive'));
-  put('tot-tui', sheetTotal('tuition'));
-  put('tot-uni', sheetTotal('university'));
-  put('tot-oth', sheetTotal('other_support'));
-  put('tot-grand', feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0));
+  COLS[feeState.sheet].filter(c => c.type === 'number')
+    .forEach(c => put('col-total-' + c.k, sheetTotal(feeState.sheet, c.k)));
+  sheetsOf(SCOPE.area).forEach(k => put('tot-' + k, sheetTotal(k)));
+  put('tot-grand', feeState.entries.reduce((s,e) => s + spendOf(e), 0));
 }
 async function delEntry(id){
   await db.remove('fee_entries', id); toast('Row removed'); render();
@@ -5725,6 +5804,7 @@ async function addFromRegister(){
    ===================================================================== */
 async function exportWorkbook(){
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
+  if (SHEETS[feeState.sheet].area === 'korangi') return exportKorangi();
   const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LEB Kharadar'; wb.created = new Date();
@@ -5870,6 +5950,57 @@ async function exportWorkbook(){
 
 
 
+/* Korangi sends two separate files, so the download is the one for the
+   tab that is open: the college fees sheet, or the QES file with both of
+   its lists. Laid out as Korangi's own files are: headings on row 1. */
+async function exportKorangi(){
+  const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
+  const file = SHEETS[feeState.sheet].file;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'LEB Korangi'; wb.created = new Date();
+  const rowsOf = k => feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
+  const heads = (ws, list) => list.forEach((t,i) => {
+    const x = ws.getCell(1, i+1); x.value = t; x.font = { bold:true };
+    x.border = { bottom:{ style:'thin' } }; x.alignment = { vertical:'middle' };
+  });
+  const amount = v => num(v) || null;
+
+  if (file === 'college'){
+    const ws = wb.addWorksheet('Sheet1');
+    [6, 28, 28, 8, 14, 12, 18].forEach((w,i) => ws.getColumn(i+1).width = w);
+    heads(ws, ['S.No','Name of Student','College','Grade','Total Amount','Month','Signature']);
+    const rows = rowsOf('korangi_college');
+    rows.forEach((e,i) => ws.addRow([i+1, e.student_name || '', e.school || '', e.class_grade || '',
+      amount(e.leb_contribution), M, '']));
+    ws.getColumn(5).numFmt = '#,##0';
+    const tr = rows.length + 3;
+    ws.getCell('B' + tr).value = 'TOTAL'; ws.getCell('B' + tr).font = { bold:true };
+    const tot = ws.getCell('E' + tr);
+    tot.value = rows.length ? { formula:'SUM(E2:E' + (rows.length + 1) + ')' } : 0;
+    tot.font = { bold:true }; tot.numFmt = '#,##0';
+    tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
+  } else {
+    const ws = wb.addWorksheet('Sheet1');
+    [6, 18, 12, 18, 20, 18, 14, 10, 12, 18, 9, 9, 10].forEach((w,i) => ws.getColumn(i+1).width = w);
+    heads(ws, ['S.NO','NAME','DOB','B.FORM #','F.NAME','F.CNIC','CONTACT','CLASS','C.SCHOOL','P.SCHOOL','T.FEE','S.FEE','SWB.ASS..']);
+    rowsOf('korangi_qes').forEach((e,i) => ws.addRow([i+1, e.student_name || '', e.dob || '', e.b_form || '',
+      e.father_name || '', e.father_cnic || '', e.contact || '', e.class_grade || '', e.school || '',
+      e.prev_school || '', amount(e.tuition_fee), amount(e.fee_amount),
+      num(e.swb_assistance) ? num(e.swb_assistance) : 'NIL']));
+    const ws2 = wb.addWorksheet('Sheet2');
+    [6, 20, 16, 20, 24, 20, 18, 10, 12, 12].forEach((w,i) => ws2.getColumn(i+1).width = w);
+    heads(ws2, ['S.NO','NAME','DOB','CNIC','F.NAME','F.CNIC','CONTACT','CLASS','UNIT','FEE DUES']);
+    rowsOf('korangi_qes2').forEach((e,i) => ws2.addRow([i+1, e.student_name || '', e.dob || '', e.cnic || '',
+      e.father_name || '', e.father_cnic || '', e.contact || '', e.class_grade || '', e.unit || '',
+      amount(e.fee_dues)]));
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    (file === 'college' ? 'Korangi_Fees_' : 'QES_Korangi_') + M.slice(0,3) + '_' + Y + '.xlsx');
+  toast('Workbook downloaded');
+}
+
 /* =====================================================================
    Funds & donors — every rupee in, every rupee out
    ===================================================================== */
@@ -5886,7 +6017,8 @@ const FUND_CATS = {
   transport_misc:'ACE transport & misc',
   other:'Other support'
 };
-const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university', other_support:'other' };
+const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university', other_support:'other',
+  korangi_college:'university', korangi_qes:'school_monthly' };
 const SHEET_KEYS = Object.keys(SHEETS);
 const sheetSum = (perMonth, k) => perMonth.reduce((s,m) => s + (m.bySheet[k] || 0), 0);
 const PAY_MODES = ['Cash','Bank transfer','Cheque','Online','In kind'];
@@ -6966,7 +7098,7 @@ function importFields(target){
     { k:'class_year',    h:'Class' },
     { k:'contact',       h:'Contact' }
   ];
-  return COLS[feeState.sheet].map(c => Object.assign({}, c, { required:c.k === 'student_name' }));
+  return COLS[feeState.sheet].map(c => Object.assign({}, c, { h:c.x || c.h, required:c.k === 'student_name' }));
 }
 
 function openImport(target, classId){
@@ -7098,6 +7230,13 @@ function collectImport(){
 }
 
 /* Excel dates arrive in every shape; keep only what Postgres will take. */
+/* Korangi writes dates as 31/03/2023; Excel turns some of them into real
+   dates, which arrive here as 2023-03-31. Both end up as 31/03/2023. */
+function dmyDate(v){
+  const t = String(v || '').trim();
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? iso[3] + '/' + iso[2] + '/' + iso[1] : t;
+}
 function tidyDate(v){
   const t = String(v || '').trim();
   if (!t) return null;
@@ -7272,6 +7411,11 @@ async function runImport(){
     feeState.entries = feeState.entries.filter(x => x.sheet !== sheet);
   }
   let n = feeState.entries.filter(e => e.sheet === sheet).length;
+  rows.forEach(r => {
+    if (r.dob) r.dob = dmyDate(r.dob);
+    // Excel drops the leading 0 from mobile numbers: 3001234567 -> 03001234567
+    if (r.contact && /^3\d{9}$/.test(String(r.contact).trim())) r.contact = '0' + String(r.contact).trim();
+  });
   await db.insertMany('fee_entries',
     rows.map(r => Object.assign({ cycle_id:feeState.cycle.id, sheet:sheet, serial_no:++n }, r)));
   closeModal();
@@ -8478,8 +8622,12 @@ async function buildQuarter(q, y){
     SHEET_KEYS.forEach(k => bySheet[k] = t(k));
     perMonth.push({ month:MONTHS[c.month-1], status:c.status, students:es.length,
       bySheet:bySheet,
-      total:SHEET_KEYS.reduce((sum,k) => sum + bySheet[k], 0) });
+      total:SHEET_KEYS.reduce((sum,k) => sum + (SHEETS[k].noSpend ? 0 : bySheet[k]), 0) });
   }
+  // An area's report shows its own sheets; any sheet carrying money shows regardless.
+  const own = sheetsOf(SCOPE.area);
+  const keys = SHEET_KEYS.filter(k => !SHEETS[k].noSpend
+    && ((own.length ? own.indexOf(k) >= 0 : SHEETS[k].area === 'kharadar') || sheetSum(perMonth, k) > 0));
   const qCases = cases.filter(c => c.meeting_date >= from && c.meeting_date <= to);
   const qProgs = programs.filter(p => {
     if (p.start_date && p.start_date >= from && p.start_date <= to) return true;       // started in the quarter
@@ -8488,7 +8636,7 @@ async function buildQuarter(q, y){
     return false;
   });
   const tally = k => qCases.filter(c => c.decision === k).length;
-  return { q, y, months, perMonth, qCases, qProgs,
+  return { q, y, months, perMonth, keys, qCases, qProgs,
     grand: perMonth.reduce((s,m) => s + m.total, 0),
     beneficiaries: perMonth.reduce((s,m) => s + m.students, 0),
     caseStats:{ total:qCases.length, approved:tally('approved'), pending:tally('pending'),
@@ -8516,15 +8664,15 @@ async function pageReport(v){
 
   h += '<div class="panel"><h2>Financial assistance by month</h2><div class="body flush"><div class="scroll">'
     + '<table class="ledger"><thead><tr><th>Month</th>'
-    + SHEET_KEYS.map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
+    + d.keys.map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
     + '<th class="num">Total</th><th class="num">Students</th><th>Sheet</th></tr></thead><tbody>'
     + (d.perMonth.length ? d.perMonth.map(m => '<tr><td>' + m.month + '</td>'
-        + SHEET_KEYS.map(k => '<td class="num">' + money(m.bySheet[k]) + '</td>').join('')
+        + d.keys.map(k => '<td class="num">' + money(m.bySheet[k]) + '</td>').join('')
         + '<td class="num">' + money(m.total) + '</td><td class="num">' + m.students + '</td>'
         + '<td>' + statusTag(m.status) + '</td></tr>').join('')
-      : '<tr><td colspan="' + (SHEET_KEYS.length + 4) + '"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
+      : '<tr><td colspan="' + (d.keys.length + 4) + '"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
     + '</tbody><tfoot><tr><td>Quarter total</td>'
-    + SHEET_KEYS.map(k => '<td class="num">' + money(sheetSum(d.perMonth, k)) + '</td>').join('')
+    + d.keys.map(k => '<td class="num">' + money(sheetSum(d.perMonth, k)) + '</td>').join('')
     + '<td class="num">' + money(d.grand) + '</td><td class="num">' + d.beneficiaries + '</td><td></td></tr></tfoot></table>'
     + '</div></div></div>';
 
@@ -8552,10 +8700,10 @@ async function exportReport(){
       para('Quarterly Report · ' + label, { bold:true, center:true, size:24 }),
       new docx.Paragraph({ text:'' }),
       heading('1. Financial assistance'),
-      simpleTable([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
-        .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
+      simpleTable([['Month'].concat(d.keys.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+        .concat(d.perMonth.map(m => [m.month].concat(d.keys.map(k => money(m.bySheet[k])))
           .concat([money(m.total), String(m.students)])))
-        .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
+        .concat([['Total'].concat(d.keys.map(k => money(sheetSum(d.perMonth, k))))
           .concat([money(d.grand), String(d.beneficiaries)])])),
       heading('2. Cases heard on Tuesday sittings'),
       simpleTable([['Measure','Count'],
@@ -8584,10 +8732,10 @@ async function exportReport(){
       + rows.slice(1).map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</table>';
     return '<p align="center"><b>Local Education Board — Kharadar</b><br><b>Quarterly Report · ' + esc(label) + '</b></p>'
       + '<h4>1. Financial assistance</h4>'
-      + tbl([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
-          .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
+      + tbl([['Month'].concat(d.keys.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+          .concat(d.perMonth.map(m => [m.month].concat(d.keys.map(k => money(m.bySheet[k])))
             .concat([money(m.total), String(m.students)])))
-          .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
+          .concat([['Total'].concat(d.keys.map(k => money(sheetSum(d.perMonth, k))))
             .concat([money(d.grand), String(d.beneficiaries)])]))
       + '<h4>2. Cases heard</h4>'
       + tbl([['Measure','Count'],['Cases heard',String(d.caseStats.total)],['Approved',String(d.caseStats.approved)],

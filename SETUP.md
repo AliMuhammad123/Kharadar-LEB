@@ -31,6 +31,21 @@ box is gone; undo is faster and less annoying.
 **Saving** — a small marker appears bottom right while a change is being written, and
 turns green when it lands. If a save fails you'll know immediately.
 
+## Korangi fee sheets
+
+Switch to Korangi and open **Fees matters → Fee sheets**. It has its own three tabs, matching
+Korangi's files: **College fees**, **QES** and **QES list 2** (the second sheet of the QES file).
+*Download Excel* gives back the file for the tab you are on, in Korangi's layout: the college
+fees sheet, or the QES file with both its lists. *Import from Excel* reads Korangi's headings
+(`NAME`, `B.FORM #`, `F.CNIC`, `S.FEE` …) directly.
+
+These sheets keep columns Kharadar's never needed, so the database needs them added once:
+open the Supabase SQL editor, paste `korangi-fees.sql` and press Run. Until then the page
+shows a reminder.
+
+S.FEE is counted as the money paid on the QES sheet. *Fee dues* on QES list 2 is shown but
+is not counted as money paid out.
+
 ## Importing from Excel
 
 Both the **Fee sheets** and the **Student register** have an *Import from Excel* button.
