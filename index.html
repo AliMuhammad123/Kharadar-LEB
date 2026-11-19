@@ -11,10 +11,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- The records here are confidential. This page may only send data to
-     Supabase, and may only run scripts from itself and jsDelivr. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
-<meta name="referrer" content="no-referrer">
 <title>Aga Khan Education Board for Kharadar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,11 +21,8 @@
       rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <script src="config.js" onerror="window.LEB_CONFIG_404=true"></script>
-<!-- deferred: the page draws before this arrives, and boot() waits for it.
-     Pinned to one version with an integrity hash: the browser refuses the
-     file if a single byte differs from the release that was checked. -->
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"
-  integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
+<!-- deferred: the page draws before this arrives, and boot() waits for it. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --ease:cubic-bezier(.22,1,.36,1);
@@ -264,6 +257,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent-2);outline:non
   border-radius:var(--r);padding:13px 16px;font-size:14px;color:var(--text);margin-bottom:18px}
 .note.warn{background:var(--red-bg);border-left-color:var(--red)}
 .note.ok{background:var(--green-bg);border-left-color:var(--green)}
+/* a confidential sheet is marked clearly so nobody mistakes it for an
+   ordinary one when entering figures */
+.note.conf{background:var(--hover);border-left-color:var(--accent-2)}
+.tag.t-conf{background:var(--hover);color:var(--accent-2);border:1px solid var(--accent-2)}
 
 .attgrid th.namecol,.attgrid td.namecol{position:sticky;left:0;background:var(--surface);
   min-width:190px;z-index:1}
@@ -670,7 +667,7 @@ function configReason(){
 }
 const SUPABASE_URL = (CFG.url || '').trim();
 const SUPABASE_ANON_KEY = (CFG.key || '').trim();
-const APP_VERSION = 'v9.0';
+const APP_VERSION = 'v9.1';
 
 /* ---------------------------------------------------------------------
    The Excel and Word builders are about 1.5 MB between them. They are
@@ -687,11 +684,10 @@ function columnLetter(n){
 }
 
 const _scripts = {};
-function loadScript(src, integrity){
+function loadScript(src){
   if (_scripts[src]) return _scripts[src];
   _scripts[src] = new Promise((resolve, reject) => {
     const el = document.createElement('script');
-    if (integrity){ el.integrity = integrity; el.crossOrigin = 'anonymous'; }
     el.src = src;
     el.onload = resolve;
     el.onerror = () => { delete _scripts[src]; reject(new Error('Could not load ' + src)); };
@@ -702,30 +698,21 @@ function loadScript(src, integrity){
 async function needExcel(){
   if (typeof ExcelJS !== 'undefined') return;
   toast('Preparing the spreadsheet tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
-    'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz');
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
 }
 async function needDocx(){
   if (typeof docx !== 'undefined') return;
   toast('Preparing the document tools\u2026');
-  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js',
-    'sha384-4xaIisuLEy2lo2HkB2C4rEf7v8jbTb2kuogX6TkuEt9feTWKBSFSOzsqNNbV+sKh');
+  await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
 }
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-/* Each area keeps its own set of sheets. `file` groups the tabs that go
-   out together in one Excel download; `noSpend` marks a sheet whose
-   figures are not money the board paid out (dues owed, for instance). */
 const SHEETS = {
-  pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive', area:'kharadar' },
-  tuition:         { label:'Tuition fees',                      short:'Tuition',         area:'kharadar' },
-  university:      { label:'University & others',               short:'University & others', area:'kharadar' },
-  other_support:   { label:'Other support matters',             short:'Other support',   area:'kharadar' },
-  korangi_college: { label:'College fees',  short:'Korangi college', area:'korangi', file:'college' },
-  korangi_qes:     { label:'QES',           short:'Korangi QES',     area:'korangi', file:'qes', wide:1950 },
-  korangi_qes2:    { label:'QES list 2',    short:'QES list 2 dues', area:'korangi', file:'qes', wide:1450, noSpend:true }
+  pak_progressive: { label:'Pak Progressive — Afghan students', short:'Pak Progressive' },
+  tuition:         { label:'Tuition fees',                      short:'Tuition' },
+  university:      { label:'University & others',               short:'University & others' },
+  other_support:   { label:'Other support matters',             short:'Other support' }
 };
-const sheetsOf = area => Object.keys(SHEETS).filter(k => SHEETS[k].area === area);
 
 let sb = null, LOCAL = true, ME = { id:null, name:'', role:'chairperson',
   area_id:null, portfolio_id:null, finance_access:true };
@@ -1281,7 +1268,7 @@ async function pageAreas(v){
   for (const a of ORG.areas){
     const cyc = cycles.find(c => c.area_id === a.id && c.month === m && c.year === y);
     const entries = cyc ? await db.list('fee_entries', { cycle_id:cyc.id }) : [];
-    const spent = entries.reduce((s,e) => s + spendOf(e), 0);
+    const spent = entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
     const due = live.filter(d => !d.target_area || d.target_area === a.id);
     const done = due.filter(d => reads.some(r => r.directive_id === d.id && r.area_id === a.id));
     rows.push({
@@ -1488,10 +1475,16 @@ function aceTabActions(){
   const t = aceState.tab;
   const reg = '<button class="btn ghost" onclick="editAceSession()">Take a register</button>';
   if (t === 'overview') return reg;
-  if (t === 'classes')  return '<button class="btn ghost" onclick="editAceTeacher()">Add teacher</button>'
+  if (t === 'classes')  return '<button class="btn ghost" onclick="openImport(\'ace_teachers\')">Import</button>'
+                             + '<button class="btn ghost" onclick="exportAceTeachers()">Export</button>'
+                             + '<button class="btn ghost" onclick="editAceTeacher()">Add teacher</button>'
                              + '<button class="btn" onclick="editAceClass()">Add class</button>';
-  if (t === 'register') return '<button class="btn" onclick="editAceSession()">Take a register</button>';
-  if (t === 'training') return '<button class="btn" onclick="editAceTraining()">Add a training</button>';
+  if (t === 'register') return '<button class="btn ghost" onclick="exportAceAttendance()">Export</button>'
+                             + '<button class="btn" onclick="editAceSession()">Take a register</button>';
+  if (t === 'training') return '<button class="btn ghost" onclick="openImport(\'ace_trainings\')">Import</button>'
+                             + '<button class="btn ghost" onclick="exportDataset(\'ace_trainings\')">Export</button>'
+                             + '<button class="btn" onclick="editAceTraining()">Add a training</button>';
+  if (t === 'assess')   return '<button class="btn ghost" onclick="exportAceBaseline()">Export</button>';
   if (t === 'money')    return '<button class="btn" onclick="payAceSalary()">Record salary</button>'
                              + '<button class="btn ghost" onclick="payAceTransport()">Transport & misc</button>';
   return '';
@@ -2634,10 +2627,12 @@ async function pageAfghan(v){
 function afgActions(){
   const t = afgState.tab;
   if (t === 'english') return engActions();
-  if (t === 'school')  return '<button class="btn ghost" onclick="exportAfgFees()">Export</button>'
+  if (t === 'school')  return '<button class="btn ghost" onclick="openImport(\'afghan_fees\')">Import</button>'
+                            + '<button class="btn ghost" onclick="exportAfgFees()">Export</button>'
                             + '<button class="btn send" onclick="openShare(\'afg_fees\')">Send</button>'
                             + '<button class="btn ghost" onclick="editAfgSupport()">Record support</button>';
-  if (t === 'claims')  return '<button class="btn ghost" onclick="exportClaims()">Export</button>'
+  if (t === 'claims')  return '<button class="btn ghost" onclick="openImport(\'national_claims\')">Import</button>'
+                            + '<button class="btn ghost" onclick="exportClaims()">Export</button>'
                             + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
                             + '<button class="btn" onclick="editClaim()">Add a claim</button>';
   if (t === 'register') return '<button class="btn ghost" onclick="openImport(\'afghan_students\')">Import</button>'
@@ -3524,19 +3519,222 @@ async function pageNational(v){
   }
   natState.data = claims;
   const names = { overview:'Dashboard', transport:CLAIM_KINDS.transport,
-                  tuition:CLAIM_KINDS.tuition, qsp:CLAIM_KINDS.qsp, activities:'Activities from areas' };
+                  tuition:CLAIM_KINDS.tuition, qsp:CLAIM_KINDS.qsp,
+                  sheets:'Confidential fee sheets', activities:'Activities from areas' };
+
+  /* the confidential sheets are an area's own records, loaded only for
+     the tab that shows them */
+  let sheets = null;
+  if (natState.tab === 'sheets'){
+    sheets = await natSheetsLoad().catch(() => ({ cycles:[], entries:[] }));
+    natState.sheets = sheets;
+  }
+
   let h = head('National Reimbursement \u00b7 ' + (names[natState.tab] || ''),
     'What the board has spent and is claiming back from national.',
     natState.tab === 'activities' ? ''
-    : natState.tab === 'overview' ? '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
-      : '<button class="btn ghost" onclick="exportClaims()">Export</button>'
+    : natState.tab === 'sheets'
+      ? (sheets && sheets.cycles.length
+          ? '<button class="btn ghost" onclick="exportNatSheetsAll()">Export all</button>'
+            + '<button class="btn send" onclick="openShare(\'nat_sheets\')">Send</button>'
+          : '')
+    : natState.tab === 'overview'
+      ? '<button class="btn ghost" onclick="openImport(\'national_claims\')">Import</button>'
+        + '<button class="btn ghost" onclick="exportClaims()">Export</button>'
+        + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
+      : '<button class="btn ghost" onclick="openImport(\'national_claims\')">Import</button>'
+        + '<button class="btn ghost" onclick="exportClaims()">Export</button>'
         + '<button class="btn send" onclick="openShare(\'nat_claims\')">Send</button>'
         + '<button class="btn" onclick="editClaim(null,\'' + natState.tab + '\')">Add a claim</button>');
   h += scopeBanner;
   if (natState.tab === 'overview') h += natOverview(claims);
   else if (natState.tab === 'activities') h += await portfolioActivities('national');
+  else if (natState.tab === 'sheets') h += natSheets(sheets);
   else h += natList(claims, natState.tab);
   v.innerHTML = h;
+}
+
+/* ---------------------------------------------------------------------
+   Confidential area fee sheets, seen from the portfolio.
+
+   These are ordinary monthly fee sheets that an area marked confidential
+   because they carry what is being claimed back from national. The area
+   still enters them on its own Fees matters screen; this is the
+   portfolio's view of every one of them, across all areas, in one place.
+   --------------------------------------------------------------------- */
+async function natSheetsLoad(){
+  const cycles = (await sList('fee_cycles')).filter(isConfidential);
+  if (!cycles.length) return { cycles:[], entries:[] };
+  const entries = await db.listIn('fee_entries', 'cycle_id', cycles.map(c => c.id));
+  return { cycles:cycles.sort((a,b) => (b.year*12+b.month) - (a.year*12+a.month)), entries:entries };
+}
+
+function natSheetRows(d, cycleId){
+  return d.entries.filter(e => e.cycle_id === cycleId);
+}
+function natSheetTotal(d, cycleId){
+  return natSheetRows(d, cycleId).reduce((t,e) => t + num(e[totalKey(e.sheet)]), 0);
+}
+
+function natSheets(d){
+  if (!d.cycles.length)
+    return '<div class="note">An area marks a monthly fee sheet <b>confidential</b> on its own '
+      + '<b>Fees matters</b> screen when the sheet belongs to this portfolio. Those sheets appear '
+      + 'here, and nowhere else outside the area’s own leadership.</div>'
+      + '<div class="panel"><div class="empty"><p>No confidential sheets yet.</p></div></div>';
+
+  const grand = d.cycles.reduce((t,c) => t + natSheetTotal(d, c.id), 0);
+  const areas = {};
+  d.cycles.forEach(c => { const k = c.area_id || 'jurisdiction';
+                          areas[k] = (areas[k] || 0) + natSheetTotal(d, c.id); });
+
+  let h = '<div class="stats">'
+    + '<div><div class="k">Confidential sheets</div><div class="v">' + d.cycles.length + '</div></div>'
+    + '<div><div class="k">Areas</div><div class="v">' + Object.keys(areas).length + '</div></div>'
+    + '<div><div class="k">Names on them</div><div class="v">' + d.entries.length + '</div></div>'
+    + '<div><div class="k">Total on these sheets</div><div class="v">Rs ' + money(grand) + '</div></div>'
+    + '</div>';
+
+  h += '<div class="note conf"><b>Confidential.</b> These sheets are kept from everyone outside '
+    + 'this portfolio, the jurisdiction’s officers, and the area’s own leadership.</div>';
+
+  /* one panel per area, newest month first */
+  Object.keys(areas).sort().forEach(areaKey => {
+    const mine = d.cycles.filter(c => (c.area_id || 'jurisdiction') === areaKey);
+    h += '<div class="panel"><h2><span>' + esc(areaKey === 'jurisdiction' ? 'Jurisdiction' : areaName(areaKey))
+      + '</span><span class="actions">'
+      + '<button class="btn sm ghost" onclick="exportNatSheets(\'' + esc(areaKey) + '\')">Download</button>'
+      + '</span></h2><div class="body flush"><div class="scroll' + (mine.length > 12 ? ' tall' : '') + '">'
+      + '<table class="ledger"><thead><tr><th>Month</th><th>Status</th><th class="num">Names</th>'
+      + Object.keys(SHEETS).map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
+      + '<th class="num">Total</th><th></th></tr></thead><tbody>'
+      + mine.map(c => {
+          const rows = natSheetRows(d, c.id);
+          return '<tr><td><b>' + MONTHS[c.month-1] + ' ' + c.year + '</b></td>'
+            + '<td>' + statusTag(c.status) + '</td>'
+            + '<td class="num">' + rows.length + '</td>'
+            + Object.keys(SHEETS).map(k => {
+                const t = rows.filter(e => e.sheet === k).reduce((x,e) => x + num(e[totalKey(k)]), 0);
+                return '<td class="num">' + (t ? money(t) : '—') + '</td>';
+              }).join('')
+            + '<td class="num"><b>' + money(natSheetTotal(d, c.id)) + '</b></td>'
+            + '<td style="width:1%;white-space:nowrap">'
+            + '<button class="btn sm ghost" onclick="openNatSheet(\'' + c.id + '\')">Open</button>'
+            + '</td></tr>';
+        }).join('')
+      + '</tbody><tfoot><tr><td>Total</td><td></td>'
+      + '<td class="num">' + mine.reduce((t,c) => t + natSheetRows(d, c.id).length, 0) + '</td>'
+      + Object.keys(SHEETS).map(k => {
+          const t = mine.reduce((x,c) => x + natSheetRows(d, c.id)
+            .filter(e => e.sheet === k).reduce((y,e) => y + num(e[totalKey(k)]), 0), 0);
+          return '<td class="num">' + (t ? money(t) : '—') + '</td>';
+        }).join('')
+      + '<td class="num"><b>' + money(areas[areaKey]) + '</b></td><td></td></tr></tfoot>'
+      + '</table></div></div></div>';
+  });
+  return h;
+}
+
+/* The names on one confidential sheet, read-only: the area owns the
+   sheet and edits it on its own screen. */
+async function openNatSheet(cycleId){
+  const d = natState.sheets || await natSheetsLoad();
+  const c = d.cycles.find(x => x.id === cycleId);
+  if (!c){ toast('That sheet is no longer here'); return; }
+  const rows = natSheetRows(d, cycleId);
+  const byKind = {};
+  rows.forEach(e => { (byKind[e.sheet] = byKind[e.sheet] || []).push(e); });
+
+  openModal(areaName(c.area_id) + ' · ' + MONTHS[c.month-1] + ' ' + c.year,
+    '<div class="note conf" style="margin-top:0"><b>Confidential sheet.</b> '
+      + esc(areaName(c.area_id)) + ' enters and corrects these figures on its own Fees matters '
+      + 'screen; this is the portfolio’s view of them.</div>'
+    + '<div class="send-row" style="border-top:none;padding-top:0;margin-bottom:12px">'
+    + '<button class="btn sm ghost" onclick="exportNatSheetOne(\'' + cycleId + '\')">Download this sheet</button>'
+    + '<button class="btn sm send" onclick="openShare(\'nat_sheet\',\'' + cycleId + '\')">Send</button>'
+    + '</div>'
+    + (rows.length
+      ? Object.keys(SHEETS).filter(k => (byKind[k] || []).length).map(k =>
+          '<h3 style="margin:16px 0 8px;font-size:14px">' + esc(SHEETS[k].label) + '</h3>'
+          + '<div class="scroll"><table class="ledger"><thead><tr><th class="sn">#</th>'
+          + COLS[k].map(col => '<th' + (col.type === 'number' ? ' class="num"' : '') + '>'
+              + esc(col.h) + '</th>').join('')
+          + '</tr></thead><tbody>'
+          + byKind[k].map((e,i) => '<tr><td class="sn">' + (i+1) + '</td>'
+              + COLS[k].map(col => '<td' + (col.type === 'number' ? ' class="num"' : '') + '>'
+                  + (col.type === 'number'
+                     ? (num(e[col.k]) ? money(e[col.k]) : '—')
+                     : esc(e[col.k] || '—')) + '</td>').join('')
+              + '</tr>').join('')
+          + '</tbody><tfoot><tr><td></td><td>Total (' + byKind[k].length + ')</td>'
+          + COLS[k].slice(1).map(col => '<td' + (col.type === 'number' ? ' class="num"' : '') + '>'
+              + (col.k === totalKey(k)
+                 ? money(byKind[k].reduce((t,e) => t + num(e[col.k]), 0)) : '') + '</td>').join('')
+          + '</tr></tfoot></table></div>').join('')
+      : '<div class="empty"><p>No names on this sheet yet.</p></div>'));
+}
+
+/* Every area's confidential sheets, one tab per area. */
+async function exportNatSheetsAll(){
+  const d = natState.sheets || await natSheetsLoad();
+  const areas = Array.from(new Set(d.cycles.map(c => c.area_id || 'jurisdiction')));
+  if (!areas.length){ toast('No confidential sheets to download'); return; }
+  for (const a of areas) await exportNatSheets(a);
+  if (areas.length > 1) toast(areas.length + ' files downloaded, one for each area');
+}
+
+async function exportNatSheets(areaKey){
+  const d = natState.sheets || await natSheetsLoad();
+  const mine = d.cycles.filter(c => (c.area_id || 'jurisdiction') === areaKey);
+  const kinds = Object.keys(SHEETS);
+  await qspTuiSheet({
+    sheetName:'Confidential ' + (areaKey === 'jurisdiction' ? 'Jurisdiction' : areaName(areaKey)),
+    title:'Confidential fee sheets — '
+      + (areaKey === 'jurisdiction' ? 'Jurisdiction' : areaName(areaKey))
+      + ' — National Reimbursement',
+    header:['Month','Year','Status','Names'].concat(kinds.map(k => SHEETS[k].short)).concat(['Total']),
+    widths:[14,8,13,9].concat(kinds.map(() => 16)).concat([16]),
+    rows:mine.map(c => {
+      const rows = natSheetRows(d, c.id);
+      return [MONTHS[c.month-1], c.year, c.status || 'draft', rows.length]
+        .concat(kinds.map(k => rows.filter(e => e.sheet === k)
+          .reduce((t,e) => t + num(e[totalKey(k)]), 0)))
+        .concat([natSheetTotal(d, c.id)]);
+    }),
+    total:['Total','','', mine.reduce((t,c) => t + natSheetRows(d, c.id).length, 0)]
+      .concat(kinds.map(k => mine.reduce((x,c) => x + natSheetRows(d, c.id)
+        .filter(e => e.sheet === k).reduce((y,e) => y + num(e[totalKey(k)]), 0), 0)))
+      .concat([mine.reduce((t,c) => t + natSheetTotal(d, c.id), 0)]),
+    filename:'Confidential_Fee_Sheets_'
+      + (areaKey === 'jurisdiction' ? 'Jurisdiction' : areaName(areaKey)).replace(/[^A-Za-z0-9]+/g,'_')
+      + '.xlsx'
+  });
+}
+
+/* One month, every name on it, laid out sheet by sheet. */
+async function exportNatSheetOne(cycleId){
+  const d = natState.sheets || await natSheetsLoad();
+  const c = d.cycles.find(x => x.id === cycleId);
+  if (!c) return;
+  const rows = natSheetRows(d, cycleId);
+  const out = [];
+  Object.keys(SHEETS).forEach(k => {
+    const mine = rows.filter(e => e.sheet === k);
+    if (!mine.length) return;
+    mine.forEach((e,i) => out.push([SHEETS[k].short, i+1]
+      .concat(COLS[k].map(col => col.type === 'number' ? num(e[col.k]) || 0 : (e[col.k] || '')))));
+  });
+  const widest = Math.max(0, ...Object.keys(SHEETS).map(k => COLS[k].length));
+  await qspTuiSheet({
+    sheetName:MONTHS[c.month-1] + ' ' + c.year,
+    title:'Confidential — ' + areaName(c.area_id) + ' — '
+      + MONTHS[c.month-1] + ' ' + c.year,
+    header:['Sheet','Sr.#'].concat(Array.from({ length:widest }, (_,i) => 'Column ' + (i+1))),
+    widths:[22,7].concat(Array.from({ length:widest }, () => 22)),
+    rows:out,
+    filename:'Confidential_' + (areaName(c.area_id) || 'Area').replace(/[^A-Za-z0-9]+/g,'_')
+      + '_' + MONTHS[c.month-1] + '_' + c.year + '.xlsx'
+  });
 }
 
 function natSum(rows, field){ return rows.reduce((s,r) => s + num(r[field]), 0); }
@@ -3735,6 +3933,35 @@ async function natData(){
    monthly sheets are set up; the others are added as their formats come.
    ===================================================================== */
 const feeMatters = { sub:'sheets' };
+const FEE_SHEET_AREAS = ['kharadar','korangi'];
+
+/* ---------------------------------------------------------------------
+   Confidential sheets.
+
+   An area's monthly sheet is normally the area's own business. Korangi's
+   are not: they carry what is being claimed back from national, so they
+   belong to the National Reimbursement portfolio and are kept from
+   everyone else, including ordinary members of Korangi itself.
+
+   The marking lives on the sheet, not on the area, so any area can mark
+   a sheet either way and Korangi can keep an ordinary one if it needs
+   to. New sheets in these areas start confidential.
+   --------------------------------------------------------------------- */
+const CONFIDENTIAL_BY_DEFAULT = ['korangi'];
+const isConfidential = c => c && c.visibility === 'national';
+const defaultVisibility = area =>
+  CONFIDENTIAL_BY_DEFAULT.indexOf(area) >= 0 ? 'national' : 'area';
+
+/* Who may change a sheet's marking. Deliberately not everyone who can
+   edit the sheet: making a confidential sheet ordinary widens who can
+   read it, so it sits with the people answerable for that. */
+function canSetVisibility(){
+  return LOCAL || ['admin','chairperson','secretary','area_head','area_co_head']
+    .indexOf(ME.role) >= 0 || ME.portfolio_id === 'national';
+}
+
+const VISIBILITY_NOTE = 'Confidential \u2014 this sheet sits with the National '
+  + 'Reimbursement portfolio. Area members cannot see it.';
 
 async function pageFeesMatters(v){
   const tabs = [['sheets','Fee sheets'],['students','Student register']]
@@ -3748,11 +3975,11 @@ async function pageFeesMatters(v){
   const body = $('fm-body');
 
   if (feeMatters.sub === 'sheets'){
-    if (!sheetsOf(SCOPE.area).length){
+    if (FEE_SHEET_AREAS.indexOf(SCOPE.area) < 0){
       body.innerHTML = head('Fee sheets', '')
         + '<div class="panel"><div class="empty">'
         + '<p><b>' + esc(areaName(SCOPE.area)) + ' has no fee sheets set up yet.</b></p>'
-        + '<p class="mini">Each area runs its fees its own way. Kharadar\u2019s and Korangi\u2019s sheets are '
+        + '<p class="mini">Each area runs its fees its own way. Kharadar\u2019s three monthly sheets are '
         + 'built; send the sheet ' + esc(areaName(SCOPE.area)) + ' uses and it will be added in the same form.</p>'
         + '</div></div>';
       return;
@@ -5125,7 +5352,8 @@ const WORKSPACES = {
     title:'National Reimbursement',
     blurb:'Out of school transportation, tuition fees, and the QSP out of school national sheet.',
     nav:[['overview','Dashboard'],['transport','Out of school transport'],
-         ['tuition','Tuition fees'],['qsp','QSP national sheet'],['activities','Activities from areas']]
+         ['tuition','Tuition fees'],['qsp','QSP national sheet'],
+         ['sheets','Confidential fee sheets'],['activities','Activities from areas']]
   }
 };
 const PORTFOLIO_ORDER = ['ace','afghan','national','qsp','tuition'];
@@ -5422,7 +5650,7 @@ async function pageDash(v){
   ]);
   const cur = cycles.find(c => c.month === now.getMonth()+1 && c.year === now.getFullYear());
   let entries = cur ? await db.list('fee_entries', { cycle_id: cur.id }) : [];
-  const disbursed = entries.reduce((s,e) => s + spendOf(e), 0);
+  const disbursed = entries.reduce((s,e) => s + (e.sheet === 'pak_progressive' ? num(e.fee_amount) : num(e.leb_contribution)), 0);
   const pending = cases.filter(c => c.decision === 'pending' || c.decision === 'deferred');
   const live = programs.filter(p => p.status === 'ongoing' || p.status === 'planned' || p.status === 'prf_pending');
 
@@ -5561,48 +5789,7 @@ const COLS = {
       opts:['Paid','Unpaid','Pending'] }
   ]
 };
-/* Korangi's two files, column for column. `x` is the heading used in the
-   Excel file itself, which is what an import looks for. */
-COLS.korangi_college = [
-  { k:'student_name',     h:'Name of Student', w:'32%' },
-  { k:'school',           h:'College',         w:'32%' },
-  { k:'class_grade',      h:'Grade',           w:'12%' },
-  { k:'leb_contribution', h:'Total Amount',    w:'16%', type:'number' }
-];
-COLS.korangi_qes = [
-  { k:'student_name',   h:'Name',            x:'NAME',     w:'10%' },
-  { k:'dob',            h:'Date of birth',   x:'DOB',      w:'8%' },
-  { k:'b_form',         h:'B-Form no.',      x:'B.FORM #', w:'11%' },
-  { k:'father_name',    h:'Father',          x:'F.NAME',   w:'10%' },
-  { k:'father_cnic',    h:'Father CNIC',     x:'F.CNIC',   w:'11%' },
-  { k:'contact',        h:'Contact',         x:'CONTACT',  w:'8%' },
-  { k:'class_grade',    h:'Class',           x:'CLASS',    w:'5%' },
-  { k:'school',         h:'Current school',  x:'C.SCHOOL', w:'7%' },
-  { k:'prev_school',    h:'Previous school', x:'P.SCHOOL', w:'10%' },
-  { k:'tuition_fee',    h:'T. fee',          x:'T.FEE',    w:'6%', type:'number' },
-  { k:'fee_amount',     h:'S. fee',          x:'S.FEE',    w:'6%', type:'number' },
-  { k:'swb_assistance', h:'SWB assistance',  x:'SWB.ASS',  w:'8%', type:'number' }
-];
-COLS.korangi_qes2 = [
-  { k:'student_name', h:'Name',        x:'NAME',      w:'13%' },
-  { k:'dob',          h:'Date of birth', x:'DOB',     w:'10%' },
-  { k:'cnic',         h:'CNIC',        x:'CNIC',      w:'13%' },
-  { k:'father_name',  h:'Father',      x:'F.NAME',    w:'13%' },
-  { k:'father_cnic',  h:'Father CNIC', x:'F.CNIC',    w:'13%' },
-  { k:'contact',      h:'Contact',     x:'CONTACT',   w:'11%' },
-  { k:'class_grade',  h:'Class',       x:'CLASS',     w:'7%' },
-  { k:'unit',         h:'Unit',        x:'UNIT',      w:'9%' },
-  { k:'fee_dues',     h:'Fee dues',    x:'FEE DUES',  w:'10%', type:'number' }
-];
-/* Columns added for Korangi (korangi-fees.sql). Only copied or written
-   when a row has them, so Kharadar keeps working on a database that has
-   not been updated yet. */
-const FEE_EXTRA = ['dob','b_form','cnic','father_name','father_cnic','contact','prev_school','unit',
-                   'tuition_fee','swb_assistance','fee_dues'];
-const TOTAL_KEY = { pak_progressive:'fee_amount', korangi_qes:'fee_amount', korangi_qes2:'fee_dues' };
-const totalKey = s => TOTAL_KEY[s] || 'leb_contribution';
-/* What a row cost the board, for the totals that leave the fee page. */
-const spendOf = e => (SHEETS[e.sheet] && SHEETS[e.sheet].noSpend) ? 0 : num(e[totalKey(e.sheet)]);
+const totalKey = s => s === 'pak_progressive' ? 'fee_amount' : 'leb_contribution';
 
 async function loadCycle(){
   const all = await sList('fee_cycles');
@@ -5610,26 +5797,9 @@ async function loadCycle(){
   feeState.entries = feeState.cycle ? await db.list('fee_entries', { cycle_id: feeState.cycle.id }) : [];
 }
 
-/* Korangi's sheets need columns Kharadar's never did. Asked once per
-   session, so the page can say what to run instead of failing on save. */
-let feeColsReady = null;
-async function feeColsMissing(){
-  if (LOCAL) return false;
-  if (feeColsReady === null){
-    // limit(0): checks the columns exist without fetching anyone's record
-    const { error } = await sb.from('fee_entries').select(FEE_EXTRA.join(',')).limit(0);
-    feeColsReady = !error;
-  }
-  return !feeColsReady;
-}
-
 async function pageFees(v){
-  const mine = sheetsOf(SCOPE.area);
-  if (mine.indexOf(feeState.sheet) < 0) feeState.sheet = mine[0];
   await loadCycle();
   const c = feeState.cycle, locked = c && c.status === 'submitted';
-  const extraMissing = mine.some(k => COLS[k].some(col => FEE_EXTRA.indexOf(col.k) >= 0))
-    && await feeColsMissing();
 
   const picker = '<select id="f-month" onchange="feeState.month=+this.value;render()">'
       + MONTHS.map((m,i) => '<option value="' + (i+1) + '"' + (feeState.month === i+1 ? ' selected' : '') + '>' + m + '</option>').join('')
@@ -5642,10 +5812,6 @@ async function pageFees(v){
     '<div style="width:140px">' + picker + '</div><div style="width:96px">' + ypicker + '</div>'
     + (c ? '<button class="btn gold" onclick="exportWorkbook()">Download Excel</button>' : ''));
 
-  if (extraMissing) h += '<div class="note warn"><b>The database needs a small update for these sheets.</b> '
-    + 'Open the Supabase SQL editor, paste the contents of <code>korangi-fees.sql</code> and press Run. '
-    + 'Until then, the extra columns (date of birth, B-Form, father, contact and the fees) cannot be saved.</div>';
-
   if (!c){
     h += '<div class="panel"><div class="empty"><p>No sheet exists for ' + MONTHS[feeState.month-1] + ' ' + feeState.year + ' yet.</p>'
       + '<button class="btn" onclick="createCycle(false)">Start an empty sheet</button> '
@@ -5657,8 +5823,22 @@ async function pageFees(v){
     + 'Reopen it if a correction is genuinely needed — the change will be visible to everyone. '
     + '<button class="btn sm ghost" onclick="setCycleStatus(\'finalized\')">Reopen</button></div>';
 
+  /* Say plainly which kind of sheet this is, so nobody enters confidential
+     figures on an ordinary sheet by mistake, or the other way round. */
+  h += isConfidential(c)
+    ? '<div class="note conf"><b>Confidential.</b> ' + VISIBILITY_NOTE.replace('Confidential \u2014 t','T')
+      + (canSetVisibility()
+        ? ' <button class="btn sm ghost" onclick="setCycleVisibility(\'area\')">Make it an ordinary area sheet</button>'
+        : '')
+      + '</div>'
+    : (canSetVisibility()
+      ? '<div class="note"><b>Ordinary area sheet.</b> Everyone in '
+        + esc(areaName(c.area_id || SCOPE.area)) + ' can see it. '
+        + '<button class="btn sm ghost" onclick="setCycleVisibility(\'national\')">Mark confidential</button></div>'
+      : '');
+
   const bySheet = k => feeState.entries.filter(e => e.sheet === k);
-  const grand = feeState.entries.reduce((s,e) => s + spendOf(e), 0);
+  const grand = feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0);
 
   h += '<div class="panel"><h2>' + MONTHS[c.month-1] + ' ' + c.year + ' ' + statusTag(c.status)
      + '<span class="actions">'
@@ -5669,27 +5849,24 @@ async function pageFees(v){
         : '')
      + '</span></h2>'
      + '<div class="body flush"><div class="tabs">'
-     + mine.map(k => '<button class="' + (feeState.sheet === k ? 'on' : '') + '" onclick="feeState.sheet=\'' + k + '\';render()">'
+     + Object.keys(SHEETS).map(k => '<button class="' + (feeState.sheet === k ? 'on' : '') + '" onclick="feeState.sheet=\'' + k + '\';render()">'
          + SHEETS[k].label + ' <span class="mini">(' + bySheet(k).length + ')</span></button>').join('')
      + '</div>' + sheetTable(feeState.sheet, locked) + '</div></div>';
 
-  h += '<div class="stats">'
-     + mine.map(k => '<div><div class="k">' + esc(STAT_LABEL[k] || SHEETS[k].label) + '</div>'
-         + '<div class="v" id="tot-' + k + '">Rs ' + money(sheetTotal(k)) + '</div></div>').join('')
+  h += '<div class="stats"><div><div class="k">Pak Progressive total</div><div class="v" id="tot-pak">Rs ' + money(sheetTotal('pak_progressive')) + '</div></div>'
+     + '<div><div class="k">Tuition \u2014 LEB share</div><div class="v" id="tot-tui">Rs ' + money(sheetTotal('tuition')) + '</div></div>'
+     + '<div><div class="k">University &amp; others</div><div class="v" id="tot-uni">Rs ' + money(sheetTotal('university')) + '</div></div>'
+     + '<div><div class="k">Other support</div><div class="v" id="tot-oth">Rs ' + money(sheetTotal('other_support')) + '</div></div>'
      + '<div><div class="k">Month total</div><div class="v" id="tot-grand">Rs ' + money(grand) + '</div></div></div>';
   v.innerHTML = h;
 }
-const STAT_LABEL = { pak_progressive:'Pak Progressive total', tuition:'Tuition \u2014 LEB share',
-  university:'University & others', other_support:'Other support',
-  korangi_college:'College fees', korangi_qes:'QES \u2014 school fees', korangi_qes2:'QES list 2 \u2014 dues (not paid out)' };
-function sheetTotal(k, key){
-  return feeState.entries.filter(e => e.sheet === k).reduce((s,e) => s + num(e[key || totalKey(k)]), 0);
+function sheetTotal(k){
+  return feeState.entries.filter(e => e.sheet === k).reduce((s,e) => s + num(e[totalKey(k)]), 0);
 }
 function sheetTable(k, locked){
   const cols = COLS[k];
   const rows = feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
-  let h = '<div class="scroll' + (rows.length > 14 ? ' tall' : '') + '"><table class="ledger"'
-    + (SHEETS[k].wide ? ' style="min-width:' + SHEETS[k].wide + 'px"' : '') + '><thead><tr><th class="sn">S.No</th>'
+  let h = '<div class="scroll' + (rows.length > 14 ? ' tall' : '') + '"><table class="ledger"><thead><tr><th class="sn">S.No</th>'
     + cols.map(c => '<th style="width:' + c.w + '"' + (c.type === 'number' ? ' class="num"' : '') + '>' + esc(c.h) + '</th>').join('')
     + (locked ? '' : '<th style="width:1%"></th>') + '</tr></thead><tbody>';
   if (!rows.length){
@@ -5703,7 +5880,7 @@ function sheetTable(k, locked){
   });
   h += '</tbody><tfoot><tr><td></td>'
     + cols.map(c => '<td' + (c.type === 'number' ? ' class="num"' : '') + '>'
-        + (c.type === 'number' ? '<span id="col-total-' + c.k + '">Rs ' + money(sheetTotal(k, c.k)) + '</span>'
+        + (c.k === totalKey(k) ? '<span id="sheet-total">Rs ' + money(sheetTotal(k)) + '</span>'
            : (c.k === cols[0].k ? 'Total (' + rows.length + ' students)' : '')) + '</td>').join('')
     + (locked ? '' : '<td></td>') + '</tr></tfoot></table></div>';
   if (!locked) h += '<div style="padding:12px 16px;border-top:1px solid var(--line)">'
@@ -5724,19 +5901,20 @@ function cellInput(r, c, locked){
 }
 
 async function createCycle(carry){
-  const cycle = await db.insert('fee_cycles', stampArea({ month:feeState.month, year:feeState.year, status:'draft' }));
+  const cycle = await db.insert('fee_cycles', stampArea({ month:feeState.month, year:feeState.year,
+    status:'draft', visibility:defaultVisibility(SCOPE.area) }));
   if (carry){
     const all = (await sList('fee_cycles')).filter(c => c.id !== cycle.id)
       .sort((a,b) => (b.year*12+b.month) - (a.year*12+a.month));
     const prev = all.find(c => (c.year*12+c.month) < (cycle.year*12+cycle.month));
     if (prev){
       const old = await db.list('fee_entries', { cycle_id: prev.id });
-      await db.insertMany('fee_entries', old.map(e => Object.assign({
+      await db.insertMany('fee_entries', old.map(e => ({
         cycle_id:cycle.id, sheet:e.sheet, serial_no:e.serial_no, student_id:e.student_id || null,
         student_name:e.student_name, school:e.school, class_grade:e.class_grade,
         fee_amount:e.fee_amount, leb_contribution:e.leb_contribution, parent_contribution:e.parent_contribution,
         full_fee:e.full_fee, tuition_teacher:e.tuition_teacher, status:e.status, result:'', remarks:''
-      }, FEE_EXTRA.reduce((x,k) => { if (e[k] != null && e[k] !== '') x[k] = e[k]; return x; }, {}))));
+      })));
       toast('Carried forward ' + old.length + ' rows from ' + MONTHS[prev.month-1]);
     } else toast('No earlier sheet to carry forward from');
   }
@@ -5746,8 +5924,30 @@ async function setCycleStatus(s){
   await db.update('fee_cycles', feeState.cycle.id, { status:s, submitted_on: s === 'submitted' ? todayISO() : null });
   toast(s === 'submitted' ? 'Marked submitted' : 'Status updated'); render();
 }
+
+/* Making a confidential sheet ordinary widens who can read it, so it is
+   confirmed rather than done on one click. */
+async function setCycleVisibility(to){
+  const c = feeState.cycle;
+  if (!c) return;
+  if (to === 'area'){
+    openModal('Make this an ordinary area sheet',
+      '<p style="margin-top:0">Everyone in <b>' + esc(areaName(c.area_id || SCOPE.area))
+      + '</b> will be able to see this sheet and the figures on it, not just the '
+      + 'National Reimbursement portfolio.</p>'
+      + '<p class="mini">You can mark it confidential again afterwards.</p>',
+      async () => {
+        await db.update('fee_cycles', c.id, { visibility:'area' });
+        closeModal(); toast('This is now an ordinary area sheet'); render();
+      }, 'Yes, open it up');
+    return;
+  }
+  await db.update('fee_cycles', c.id, { visibility:'national' });
+  toast('Marked confidential \u2014 it now sits with the National Reimbursement portfolio');
+  render();
+}
 async function addEntry(){
-  const k = feeState.sheet;  /* status only means something on Kharadar's sheets */
+  const k = feeState.sheet;
   const n = feeState.entries.filter(e => e.sheet === k).length + 1;
   await db.insert('fee_entries', { cycle_id:feeState.cycle.id, sheet:k, serial_no:n,
     status: k === 'pak_progressive' ? 'Paid' : '', result:'' });
@@ -5756,7 +5956,7 @@ async function addEntry(){
 async function saveCell(id, key, val){
   const e = feeState.entries.find(x => x.id === id);
   if (e) e[key] = val;
-  if (COLS[feeState.sheet].some(c => c.k === key && c.type === 'number')) refreshTotals();
+  if (key.indexOf('contribution') >= 0 || key.indexOf('fee') >= 0) refreshTotals();
   savingStart();
   try{
     await db.update('fee_entries', id, { [key]: val });
@@ -5770,10 +5970,12 @@ async function saveCell(id, key, val){
 // and the cursor stays where you put it.
 function refreshTotals(){
   const put = (id, val) => { const el = $(id); if (el) el.textContent = 'Rs ' + money(val); };
-  COLS[feeState.sheet].filter(c => c.type === 'number')
-    .forEach(c => put('col-total-' + c.k, sheetTotal(feeState.sheet, c.k)));
-  sheetsOf(SCOPE.area).forEach(k => put('tot-' + k, sheetTotal(k)));
-  put('tot-grand', feeState.entries.reduce((s,e) => s + spendOf(e), 0));
+  put('sheet-total', sheetTotal(feeState.sheet));
+  put('tot-pak', sheetTotal('pak_progressive'));
+  put('tot-tui', sheetTotal('tuition'));
+  put('tot-uni', sheetTotal('university'));
+  put('tot-oth', sheetTotal('other_support'));
+  put('tot-grand', feeState.entries.reduce((s,e) => s + num(e[totalKey(e.sheet)]), 0));
 }
 async function delEntry(id){
   await db.remove('fee_entries', id); toast('Row removed'); render();
@@ -5804,7 +6006,6 @@ async function addFromRegister(){
    ===================================================================== */
 async function exportWorkbook(){
   try{ await needExcel(); }catch(e){ toast(e.message); return; }
-  if (SHEETS[feeState.sheet].area === 'korangi') return exportKorangi();
   const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LEB Kharadar'; wb.created = new Date();
@@ -5950,57 +6151,6 @@ async function exportWorkbook(){
 
 
 
-/* Korangi sends two separate files, so the download is the one for the
-   tab that is open: the college fees sheet, or the QES file with both of
-   its lists. Laid out as Korangi's own files are: headings on row 1. */
-async function exportKorangi(){
-  const c = feeState.cycle, M = MONTHS[c.month-1], Y = c.year;
-  const file = SHEETS[feeState.sheet].file;
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'LEB Korangi'; wb.created = new Date();
-  const rowsOf = k => feeState.entries.filter(e => e.sheet === k).sort((a,b) => (a.serial_no||0) - (b.serial_no||0));
-  const heads = (ws, list) => list.forEach((t,i) => {
-    const x = ws.getCell(1, i+1); x.value = t; x.font = { bold:true };
-    x.border = { bottom:{ style:'thin' } }; x.alignment = { vertical:'middle' };
-  });
-  const amount = v => num(v) || null;
-
-  if (file === 'college'){
-    const ws = wb.addWorksheet('Sheet1');
-    [6, 28, 28, 8, 14, 12, 18].forEach((w,i) => ws.getColumn(i+1).width = w);
-    heads(ws, ['S.No','Name of Student','College','Grade','Total Amount','Month','Signature']);
-    const rows = rowsOf('korangi_college');
-    rows.forEach((e,i) => ws.addRow([i+1, e.student_name || '', e.school || '', e.class_grade || '',
-      amount(e.leb_contribution), M, '']));
-    ws.getColumn(5).numFmt = '#,##0';
-    const tr = rows.length + 3;
-    ws.getCell('B' + tr).value = 'TOTAL'; ws.getCell('B' + tr).font = { bold:true };
-    const tot = ws.getCell('E' + tr);
-    tot.value = rows.length ? { formula:'SUM(E2:E' + (rows.length + 1) + ')' } : 0;
-    tot.font = { bold:true }; tot.numFmt = '#,##0';
-    tot.border = { top:{ style:'thin' }, bottom:{ style:'double' } };
-  } else {
-    const ws = wb.addWorksheet('Sheet1');
-    [6, 18, 12, 18, 20, 18, 14, 10, 12, 18, 9, 9, 10].forEach((w,i) => ws.getColumn(i+1).width = w);
-    heads(ws, ['S.NO','NAME','DOB','B.FORM #','F.NAME','F.CNIC','CONTACT','CLASS','C.SCHOOL','P.SCHOOL','T.FEE','S.FEE','SWB.ASS..']);
-    rowsOf('korangi_qes').forEach((e,i) => ws.addRow([i+1, e.student_name || '', e.dob || '', e.b_form || '',
-      e.father_name || '', e.father_cnic || '', e.contact || '', e.class_grade || '', e.school || '',
-      e.prev_school || '', amount(e.tuition_fee), amount(e.fee_amount),
-      num(e.swb_assistance) ? num(e.swb_assistance) : 'NIL']));
-    const ws2 = wb.addWorksheet('Sheet2');
-    [6, 20, 16, 20, 24, 20, 18, 10, 12, 12].forEach((w,i) => ws2.getColumn(i+1).width = w);
-    heads(ws2, ['S.NO','NAME','DOB','CNIC','F.NAME','F.CNIC','CONTACT','CLASS','UNIT','FEE DUES']);
-    rowsOf('korangi_qes2').forEach((e,i) => ws2.addRow([i+1, e.student_name || '', e.dob || '', e.cnic || '',
-      e.father_name || '', e.father_cnic || '', e.contact || '', e.class_grade || '', e.unit || '',
-      amount(e.fee_dues)]));
-  }
-
-  const buf = await wb.xlsx.writeBuffer();
-  download(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    (file === 'college' ? 'Korangi_Fees_' : 'QES_Korangi_') + M.slice(0,3) + '_' + Y + '.xlsx');
-  toast('Workbook downloaded');
-}
-
 /* =====================================================================
    Funds & donors — every rupee in, every rupee out
    ===================================================================== */
@@ -6017,8 +6167,7 @@ const FUND_CATS = {
   transport_misc:'ACE transport & misc',
   other:'Other support'
 };
-const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university', other_support:'other',
-  korangi_college:'university', korangi_qes:'school_monthly' };
+const SHEET_CAT = { pak_progressive:'school_monthly', tuition:'tuition', university:'university', other_support:'other' };
 const SHEET_KEYS = Object.keys(SHEETS);
 const sheetSum = (perMonth, k) => perMonth.reduce((s,m) => s + (m.bySheet[k] || 0), 0);
 const PAY_MODES = ['Cash','Bank transfer','Cheque','Online','In kind'];
@@ -6103,6 +6252,7 @@ async function pageFunds(v){
     + scopes.map(o => '<option value="' + o[0] + '"' + (fundState.scope === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('')
     + '</select></div>'
     + '<button class="btn send" onclick="openShare(\'funds\')">Send</button>'
+    + '<button class="btn ghost" onclick="openFundsIO()">Import / Export</button>'
     + '<button class="btn ghost" onclick="exportLedger()">Download ledger</button>'
     + '<button class="btn ghost" onclick="editDisbursement()">Record payment</button>'
     + '<button class="btn" onclick="editDonation()">Record receipt</button>');
@@ -6680,6 +6830,34 @@ async function shareContent(kind, id){
         '', 'The full report is attached.'].concat(sign).join('\n'),
       attach:'Press Download Word first, then attach the report to the email.' };
   }
+  if (kind === 'members'){
+    const rows = (await db.list('profiles'))
+      .filter(r => r.role !== 'pending' && r.role !== 'blocked')
+      .sort((a,b) => (a.full_name||'').localeCompare(b.full_name||''));
+    return { subject:'Board members \u2014 ' + JURISDICTION_NAME,
+      body:['Assalam-o-Alaikum,','',
+        'Who sits where:','',
+        rows.map((r,i) => (i+1) + '. ' + (r.full_name || 'Unnamed')
+          + ' \u2014 ' + roleName(r.role)
+          + (r.area_id ? ', ' + areaName(r.area_id) : '')
+          + (r.portfolio_id ? ', ' + portName(r.portfolio_id) : '')
+          + (r.contact ? ' \u2014 ' + r.contact : '')).join('\n'),
+        '', 'Members: ' + rows.length].concat(sign).join('\n') };
+  }
+  if (kind === 'nat_sheets' || kind === 'nat_sheet'){
+    const d = natState.sheets || await natSheetsLoad();
+    const list = kind === 'nat_sheet' ? d.cycles.filter(c => c.id === id) : d.cycles;
+    const total = list.reduce((t,c) => t + natSheetTotal(d, c.id), 0);
+    return { subject:'Confidential fee sheets \u2014 National Reimbursement',
+      attach:'These sheets are confidential. Send them only to people entitled to see them.',
+      body:['Assalam-o-Alaikum,','',
+        'Confidential fee sheets held with the National Reimbursement portfolio:','',
+        list.map(c => '  ' + areaName(c.area_id) + ' \u00b7 ' + MONTHS[c.month-1] + ' ' + c.year
+          + ' \u2014 ' + natSheetRows(d, c.id).length + ' names, '
+          + rs(natSheetTotal(d, c.id))).join('\n'),
+        '', 'Sheets: ' + list.length,
+        'Total: ' + rs(total)].concat(sign).join('\n') };
+  }
   if (kind === 'morning_students'){
     const d = await morningData();
     const live = mornOrder(d.students.filter(x => x.status !== 'left'));
@@ -7020,7 +7198,410 @@ function guessColumn(headerCells, label){
   return exact >= 0 ? exact : partial;
 }
 
+/* =====================================================================
+   Import and export, defined once per screen.
+
+   Every list in the app can go out to Excel and come back in. Rather
+   than writing the two halves separately — which is how a download and
+   an upload quietly drift out of step — each screen's columns are
+   described once here and both directions are built from that
+   description.
+
+   Per column:
+     k         the database column
+     h         the heading, which is also what the importer matches on
+     type      'number' or 'date'; anything else is text
+     required  a row without it is skipped on import
+     money     the column is left out entirely for anyone who may not
+               see the board's money
+     out       how to render it on the way out, when the stored value is
+               a code rather than what a person would read
+     opts      the readable values, for codes
+     w         column width in the downloaded file
+   ===================================================================== */
+/* Several columns store a short code and show a readable label. Such a
+   column has to survive a download followed by an upload: if it went out
+   as "School monthly fees" and came back stored as that text, every
+   total and filter that groups by the code would quietly break. So the
+   two directions are generated together from one map and are always
+   each other's inverse. */
+function coded(map, fallback){
+  return {
+    out:v => map[v] || v || '',
+    parse:v => {
+      const t = String(v == null ? '' : v).trim();
+      if (!t) return fallback !== undefined ? fallback : '';
+      if (map[t] !== undefined) return t;                     // already a code
+      const low = t.toLowerCase();
+      const byLabel = Object.keys(map).find(k => String(map[k]).toLowerCase() === low);
+      if (byLabel) return byLabel;
+      const loose = Object.keys(map).find(k => k.replace(/_/g,' ').toLowerCase() === low);
+      if (loose) return loose;
+      return fallback !== undefined ? fallback : t;
+    }
+  };
+}
+const LBL = (map) => (v) => map[v] || v || '';
+const YESNO = v => v ? 'Yes' : 'No';
+const PROG_TYPE   = { program:'Programme', course:'Course', event:'Event', activity:'Activity' };
+const PROG_STATUS = { planned:'Planned', prf_pending:'Awaiting permission', approved:'Approved',
+                      ongoing:'Ongoing', completed:'Completed', cancelled:'Cancelled' };
+const CASE_DECISION = { pending:'Pending', approved:'Approved', declined:'Declined',
+                        forwarded:'Forwarded', closed:'Closed' };
+const CASE_CATEGORY = { school_fee:'School fee', tuition:'Tuition',
+                        university:'University / other', other:'Other' };
+const CLAIM_STATUS_LBL = { pending:'Pending', submitted:'Submitted', approved:'Approved',
+                           received:'Received', rejected:'Rejected' };
+const FEE_PAID_STATUS = { paid:'Paid', unpaid:'Unpaid', partial:'Partial' };
+
+const DATASETS = {
+  cases: {
+    table:'cases', label:'Jamati member cases', file:'Jamati_Member_Cases',
+    title:() => 'Jamati member cases — ' + areaName(SCOPE.area),
+    rows:() => sList('cases').then(r => r.slice()
+      .sort((a,b) => (b.meeting_date || '').localeCompare(a.meeting_date || ''))),
+    cols:[
+      { k:'meeting_date',       h:'Meeting Date', type:'date', w:14 },
+      { k:'case_no',            h:'Case No.', w:11 },
+      { k:'applicant_name',     h:'Applicant Name', required:true, w:24 },
+      { k:'contact',            h:'Contact', w:16 },
+      { k:'student_name',       h:'Student Name', w:24 },
+      { k:'institution',        h:'Institution', w:26 },
+      Object.assign({ k:'category', h:'Category', w:18 }, coded(CASE_CATEGORY, 'other')),
+      { k:'request_summary',    h:'Request', w:40 },
+      { k:'amount_requested',   h:'Amount Requested', type:'number', w:17 },
+      { k:'board_recommendation', h:'Board Recommendation', w:34 },
+      Object.assign({ k:'decision', h:'Decision', w:14 }, coded(CASE_DECISION, 'pending')),
+      { k:'forwarded_on',       h:'Forwarded On', type:'date', w:14 },
+      { k:'parent_body_response', h:'Parent Body Response', w:30 },
+      { k:'notes',              h:'Notes', w:30 }
+    ],
+    sum:['amount_requested']
+  },
+
+  programs: {
+    table:'programs', label:'Activities', file:'Activities_And_Programmes',
+    title:() => 'Activities — ' + areaName(SCOPE.area),
+    rows:() => sList('programs').then(r => r.slice()
+      .sort((a,b) => (b.start_date || '').localeCompare(a.start_date || ''))),
+    cols:[
+      { k:'title',                h:'Activity Title', required:true, w:32 },
+      Object.assign({ k:'type',   h:'Type', w:14 },   coded(PROG_TYPE, 'program')),
+      Object.assign({ k:'status', h:'Status', w:20 }, coded(PROG_STATUS, 'planned')),
+      { k:'start_date',           h:'Start Date', type:'date', w:13 },
+      { k:'end_date',             h:'End Date', type:'date', w:13 },
+      { k:'venue',                h:'Venue', w:26 },
+      { k:'target_group',         h:'Target Group', w:22 },
+      { k:'expected_participants',h:'Expected Participants', type:'number', w:18 },
+      { k:'collaboration',        h:'Collaboration', w:22 },
+      { k:'description',          h:'Description', w:40 },
+      { k:'requires_prf',         h:'Needs Permission', w:16, out:YESNO,
+        parse:v => /^(y|yes|true|1)/i.test(String(v || '')) }
+    ]
+  },
+
+  prf_requests: {
+    table:'prf_requests', label:'Permission programmes', file:'Permission_Forms',
+    title:() => 'Permission programmes (PRF) — ' + areaName(SCOPE.area),
+    rows:() => sList('prf_requests').then(r => r.slice()
+      .sort((a,b) => (b.program_date || '').localeCompare(a.program_date || ''))),
+    cols:[
+      { k:'program_name',        h:'Programme Name', required:true, w:32 },
+      { k:'board_portfolio',     h:'Board / Portfolio', w:24 },
+      { k:'theme',               h:'Theme', w:24 },
+      { k:'program_date',        h:'Programme Date', type:'date', w:14 },
+      { k:'event_date',          h:'Event Date', type:'date', w:14 },
+      { k:'venue',               h:'Venue', w:26 },
+      { k:'venue_address',       h:'Venue Address', w:30 },
+      { k:'duration',            h:'Duration', w:14 },
+      { k:'target_group',        h:'Target Group', w:22 },
+      { k:'initial_participants',h:'Expected Participants', w:18 },
+      { k:'aims',                h:'Aims', w:36 },
+      { k:'learning_focus',      h:'Learning Focus', w:30 },
+      { k:'incharge_name',       h:'In-charge', w:22 },
+      { k:'incharge_designation',h:'Designation', w:20 },
+      { k:'budget_income_total', h:'Budget Income', type:'number', money:true, w:15 },
+      { k:'budget_expense_total',h:'Budget Expense', type:'number', money:true, w:15 }
+    ]
+  },
+
+  national_claims: {
+    table:'national_claims', label:'National claims', file:'National_Reimbursement_Claims',
+    title:() => 'National reimbursement claims — ' + areaName(SCOPE.area),
+    rows:() => sList('national_claims').then(r => r.slice()
+      .sort((a,b) => (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0))),
+    cols:[
+      { k:'kind',            h:'Kind', w:28, out:LBL(CLAIM_KINDS),
+        parse:v => {
+          const t = String(v || '').toLowerCase();
+          const hit = Object.keys(CLAIM_KINDS).find(k =>
+            k === t || CLAIM_KINDS[k].toLowerCase() === t);
+          return hit || (/(transport)/.test(t) ? 'transport'
+                       : /(qsp|out of school)/.test(t) ? 'qsp' : 'tuition');
+        } },
+      { k:'student_name',    h:'Student Name', required:true, w:26 },
+      { k:'father_name',     h:'Father Name', w:26 },
+      { k:'institution',     h:'Institution', w:28 },
+      { k:'class_grade',     h:'Class', w:10 },
+      { k:'month',           h:'Month', type:'number', w:9 },
+      { k:'year',            h:'Year', type:'number', w:9 },
+      { k:'months_covered',  h:'Months Covered', w:18 },
+      { k:'amount_claimed',  h:'Amount Claimed', type:'number', money:true, w:16 },
+      { k:'amount_received', h:'Amount Received', type:'number', money:true, w:16 },
+      Object.assign({ k:'status', h:'Status', w:13 }, coded(CLAIM_STATUS_LBL, 'pending')),
+      { k:'submitted_on',    h:'Submitted On', type:'date', w:14 },
+      { k:'received_on',     h:'Received On', type:'date', w:14 },
+      { k:'reference_no',    h:'Reference No.', w:16 },
+      { k:'remarks',         h:'Remarks', w:28 }
+    ],
+    sum:['amount_claimed','amount_received']
+  },
+
+  donations: {
+    table:'donations', label:'Receipts from donors', file:'Funds_Receipts',
+    finance:true,
+    title:() => 'Receipts from donors — ' + areaName(SCOPE.area),
+    rows:() => sList('donations').then(r => r.slice()
+      .sort((a,b) => (b.received_on || '').localeCompare(a.received_on || ''))),
+    cols:[
+      { k:'received_on',   h:'Received On', type:'date', w:14 },
+      { k:'donor_name',    h:'Donor Name', required:true, w:28 },
+      { k:'donor_contact', h:'Donor Contact', w:18 },
+      { k:'amount',        h:'Amount', type:'number', w:14 },
+      Object.assign({ k:'purpose', h:'Purpose', w:22 }, coded(FUND_CATS, 'other')),
+      { k:'mode',          h:'Mode', w:15 },
+      { k:'reference_no',  h:'Reference No.', w:16 },
+      { k:'receipt_no',    h:'Receipt No.', w:14 },
+      { k:'notes',         h:'Notes', w:28 }
+    ],
+    sum:['amount']
+  },
+
+  disbursements: {
+    table:'disbursements', label:'Payments made', file:'Funds_Payments',
+    finance:true,
+    title:() => 'Payments made — ' + areaName(SCOPE.area),
+    rows:() => sList('disbursements').then(r => r.slice()
+      .sort((a,b) => (b.paid_on || '').localeCompare(a.paid_on || ''))),
+    cols:[
+      { k:'paid_on',      h:'Paid On', type:'date', w:14 },
+      { k:'student_name', h:'Student Name', required:true, w:26 },
+      Object.assign({ k:'category', h:'Kind of Support', w:24 }, coded(FUND_CATS, 'other')),
+      { k:'institution',  h:'Institution', w:26 },
+      { k:'paid_to',      h:'Paid To', w:24 },
+      { k:'amount',       h:'Amount', type:'number', w:14 },
+      { k:'mode',         h:'Mode', w:15 },
+      { k:'reference_no', h:'Reference No.', w:16 },
+      { k:'notes',        h:'Notes', w:28 }
+    ],
+    sum:['amount']
+  },
+
+  ace_trainings: {
+    table:'ace_trainings', label:'ACE trainings', file:'ACE_Trainings',
+    title:() => 'ACE online trainings — ' + areaName(SCOPE.area),
+    rows:() => sList('ace_trainings').then(r => r.slice()
+      .sort((a,b) => (b.held_on || '').localeCompare(a.held_on || ''))),
+    cols:[
+      { k:'title',     h:'Training Title', required:true, w:32 },
+      { k:'held_on',   h:'Date', type:'date', w:13 },
+      { k:'mode',      h:'Mode', w:14 },
+      { k:'duration',  h:'Duration', w:14 },
+      { k:'trainer',   h:'Trainer', w:24 },
+      { k:'link',      h:'Link', w:30 },
+      { k:'drive_url', h:'Pictures (Drive)', w:30 },
+      { k:'notes',     h:'Notes', w:28 }
+    ]
+  },
+
+  afghan_fees: {
+    table:'afghan_fees', label:'Afghan monthly fees', file:'Afghan_Monthly_Fees',
+    finance:true,
+    /* A month's fee belongs to a pupil. The sheet carries the pupil's
+       name, so it is matched back to the roll on the way in; a name that
+       is not on the roll is left out rather than filed under nobody. */
+    parent:{ table:'afghan_students', idField:'student_id',
+             nameField:'full_name', heading:'Student Name', w:26 },
+    title:() => 'Afghan students — monthly fees — ' + areaName(SCOPE.area),
+    rows:() => sList('afghan_fees').then(r => r.slice()
+      .sort((a,b) => (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0))),
+    cols:[
+      { k:'month',            h:'Month', type:'number', w:9 },
+      { k:'year',             h:'Year', type:'number', w:9 },
+      { k:'amount',           h:'Monthly Fee', type:'number', w:15 },
+      { k:'transport_amount', h:'Transport', type:'number', w:14 },
+      Object.assign({ k:'status', h:'Status', w:13 }, coded(FEE_PAID_STATUS, 'unpaid')),
+      { k:'paid_on',          h:'Paid On', type:'date', w:14 },
+      { k:'remarks',          h:'Remarks', w:28 }
+    ],
+    sum:['amount','transport_amount']
+  },
+
+  morning_salaries: {
+    table:'morning_salaries', label:'Morning tuition salaries', file:'Morning_Tuition_Salaries',
+    finance:true,
+    parent:{ table:'morning_teachers', idField:'teacher_id',
+             nameField:'full_name', heading:'Teacher Name', w:26 },
+    title:() => 'Morning tuition — salaries — ' + areaName(SCOPE.area),
+    rows:() => sList('morning_salaries').then(r => r.slice()
+      .sort((a,b) => (b.year||0) - (a.year||0) || (b.month||0) - (a.month||0))),
+    cols:[
+      { k:'month',      h:'Month', type:'number', w:9 },
+      { k:'year',       h:'Year', type:'number', w:9 },
+      { k:'amount',     h:'Amount', type:'number', w:14 },
+      { k:'voucher_no', h:'Voucher No.', w:16 },
+      { k:'paid_on',    h:'Paid On', type:'date', w:14 },
+      { k:'paid',       h:'Paid', w:10, out:YESNO,
+        parse:v => /^(y|yes|true|1|paid)/i.test(String(v || '')) },
+      { k:'remarks',    h:'Remarks', w:28 }
+    ],
+    sum:['amount']
+  },
+
+  quarterly_reports: {
+    table:'quarterly_reports', label:'Quarter reports', file:'Quarter_Reports',
+    title:() => 'Quarter reports — ' + areaName(SCOPE.area),
+    rows:() => sList('quarterly_reports').then(r => r.slice()
+      .sort((a,b) => (b.year||0) - (a.year||0) || (b.quarter||0) - (a.quarter||0))),
+    cols:[
+      { k:'quarter',           h:'Quarter', type:'number', required:true, w:10 },
+      { k:'year',              h:'Year', type:'number', w:9 },
+      { k:'generated_on',      h:'Prepared On', type:'date', w:14 },
+      { k:'highlights',        h:'Highlights', w:44 },
+      { k:'challenges',        h:'Challenges', w:44 },
+      { k:'next_quarter_plan', h:'Next Quarter Plan', w:44 }
+    ]
+  }
+};
+
+/* ---- the two directions, both built from the description above ---- */
+
+/* A column is dropped for anyone who may not see the board's money.
+   Where the records hang off a parent — a fee off a pupil, a salary off
+   a teacher — the parent's name leads, because that is what identifies
+   the row to a person reading the sheet. */
+function dsCols(ds){
+  const own = ds.cols.filter(c => !c.money || canFinance());
+  if (!ds.parent) return own;
+  return [{ k:ds.parent.idField, h:ds.parent.heading, required:true,
+            w:ds.parent.w || 26, parentName:true }].concat(own);
+}
+
+/* name -> id, for matching an imported sheet back to the roll */
+async function dsParentIndex(ds){
+  if (!ds.parent) return null;
+  const rows = await sList(ds.parent.table).catch(() => []);
+  const byName = new Map(), byId = new Map();
+  rows.forEach(r => {
+    const nm = String(r[ds.parent.nameField] || '').trim().toLowerCase();
+    if (nm && !byName.has(nm)) byName.set(nm, r.id);
+    byId.set(r.id, r[ds.parent.nameField] || '');
+  });
+  return { byName, byId };
+}
+function dsCell(c, row, idx){
+  if (c.parentName) return (idx && idx.byId.get(row[c.k])) || '';
+  const v = row[c.k];
+  if (c.out) return c.out(v, row);
+  if (c.type === 'number') return num(v) || 0;
+  if (c.type === 'date') return v || '';
+  return v == null ? '' : String(v);
+}
+
+/* The funds ledger is two lists, so it gets a small chooser rather than
+   four buttons crowding the header. */
+function openFundsIO(){
+  if (!canFinance()){ toast('This one is for the finance members'); return; }
+  openModal('Import and export \u2014 funds',
+    '<p style="margin-top:0">Receipts from donors and payments made are two separate lists, '
+    + 'so each is brought in and taken out on its own.</p>'
+    + '<h3 style="margin:16px 0 8px;font-size:14px">Receipts from donors</h3>'
+    + '<div class="send-row" style="border-top:none;padding-top:0">'
+    + '<button class="btn sm ghost" onclick="openImport(\'donations\')">Import receipts</button>'
+    + '<button class="btn sm ghost" onclick="exportDataset(\'donations\')">Export receipts</button></div>'
+    + '<h3 style="margin:18px 0 8px;font-size:14px">Payments made</h3>'
+    + '<div class="send-row" style="border-top:none;padding-top:0">'
+    + '<button class="btn sm ghost" onclick="openImport(\'disbursements\')">Import payments</button>'
+    + '<button class="btn sm ghost" onclick="exportDataset(\'disbursements\')">Export payments</button></div>'
+    + '<h3 style="margin:18px 0 8px;font-size:14px">Both together</h3>'
+    + '<div class="send-row" style="border-top:none;padding-top:0">'
+    + '<button class="btn sm ghost" onclick="exportLedger()">Download the whole ledger</button></div>');
+}
+
+/* Board members go out but do not come back in: a person on the board
+   has an account they created themselves, and a spreadsheet cannot make
+   one. Placing someone is done on this screen. */
+async function exportMembers(){
+  const rows = (await db.list('profiles')).sort((x,y) =>
+    (x.full_name||'').localeCompare(y.full_name||''));
+  await qspTuiSheet({
+    sheetName:'Board Members',
+    title:'Board members \u2014 ' + JURISDICTION_NAME,
+    header:['Sr.#','Name','Posting','Area','Portfolio','Designation','Contact','Sees finance'],
+    widths:[7,26,22,16,22,20,18,13],
+    rows:rows.map((r,i) => [i+1, r.full_name || '', roleName(r.role),
+      r.area_id ? areaName(r.area_id) : '\u2014',
+      r.portfolio_id ? portName(r.portfolio_id) : '\u2014',
+      r.designation || '', r.contact || '', r.finance_access ? 'Yes' : 'No']),
+    total:['', 'Total (' + rows.length + ')', '', '', '', '', '', ''],
+    filename:'Board_Members.xlsx'
+  });
+}
+
+async function exportDataset(key){
+  const ds = DATASETS[key];
+  if (!ds){ toast('Nothing to download here'); return; }
+  if (ds.finance && !canFinance()){ toast('This one is for the finance members'); return; }
+  const rows = await ds.rows();
+  const cols = dsCols(ds);
+  const idx  = await dsParentIndex(ds);
+  const sums = (ds.sum || []).filter(k => cols.some(c => c.k === k));
+  await qspTuiSheet({
+    sheetName:ds.label.slice(0,31),
+    title:typeof ds.title === 'function' ? ds.title() : ds.title,
+    header:['Sr.#'].concat(cols.map(c => c.h)),
+    widths:[7].concat(cols.map(c => c.w || 20)),
+    rows:rows.map((r,i) => [i+1].concat(cols.map(c => dsCell(c, r, idx)))),
+    total:sums.length
+      ? ['Total (' + rows.length + ')'].concat(cols.map(c =>
+          sums.indexOf(c.k) >= 0 ? rows.reduce((t,r) => t + num(r[c.k]), 0) : ''))
+      : null,
+    filename:ds.file + '.xlsx'
+  });
+}
+
+/* Turns a sheet's rows into records for the table, applying each
+   column's own reading of the value. */
+function dsRowsToRecords(ds, rows, idx){
+  const cols = dsCols(ds);
+  const required = cols.filter(c => c.required).map(c => c.k);
+  const unmatched = [];
+  const out = rows.map(r => {
+    const row = {};
+    cols.forEach(c => {
+      if (r[c.k] === undefined || r[c.k] === '') return;
+      if (c.parentName){
+        /* the sheet gives a name; the table needs the record it belongs to */
+        const hit = idx && idx.byName.get(String(r[c.k]).trim().toLowerCase());
+        if (hit) row[c.k] = hit;
+        else unmatched.push(String(r[c.k]));
+        return;
+      }
+      row[c.k] = c.parse ? c.parse(r[c.k])
+        : c.type === 'date' ? tidyDate(r[c.k])
+        : c.type === 'number' ? num(r[c.k])
+        : r[c.k];
+    });
+    return row;
+  }).filter(r => required.every(k => r[k] !== undefined && r[k] !== ''));
+  out.unmatched = unmatched;
+  return out;
+}
+
 function importFields(target){
+  /* anything described in the registry answers for itself */
+  if (DATASETS[target]) return dsCols(DATASETS[target])
+    .map(c => ({ k:c.k, h:c.h, type:c.type, required:c.required }));
   if (target === 'ace_teachers') return [
     { k:'full_name',      h:'Teacher Name', required:true },
     { k:'qualification',  h:'Qualification' },
@@ -7098,14 +7679,16 @@ function importFields(target){
     { k:'class_year',    h:'Class' },
     { k:'contact',       h:'Contact' }
   ];
-  return COLS[feeState.sheet].map(c => Object.assign({}, c, { h:c.x || c.h, required:c.k === 'student_name' }));
+  return COLS[feeState.sheet].map(c => Object.assign({}, c, { required:c.k === 'student_name' }));
 }
 
 function openImport(target, classId){
   IMPORT.target = target;
   IMPORT.classId = classId || null;
   IMPORT.fields = importFields(target);
-  const where = target === 'qsp_students' ? 'the out-of-school register'
+  /* the registry's screens describe themselves */
+  const where = DATASETS[target] ? DATASETS[target].label.toLowerCase()
+    : target === 'qsp_students' ? 'the out-of-school register'
     : target === 'tuition_students' ? 'the tuition approved list, including any NC CONTR month columns'
     : target === 'tuition_term_approvals' ? 'the new academic term request'
     : target === 'eng_students' ? 'this English class roll'
@@ -7230,13 +7813,6 @@ function collectImport(){
 }
 
 /* Excel dates arrive in every shape; keep only what Postgres will take. */
-/* Korangi writes dates as 31/03/2023; Excel turns some of them into real
-   dates, which arrive here as 2023-03-31. Both end up as 31/03/2023. */
-function dmyDate(v){
-  const t = String(v || '').trim();
-  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return iso ? iso[3] + '/' + iso[2] + '/' + iso[1] : t;
-}
 function tidyDate(v){
   const t = String(v || '').trim();
   if (!t) return null;
@@ -7330,6 +7906,29 @@ async function runImport(){
     closeModal(); toast(fresh.length + ' students imported'); render(); return;
   }
 
+  /* the registry's screens all import the same way */
+  if (DATASETS[IMPORT.target]){
+    const ds = DATASETS[IMPORT.target];
+    if (ds.finance && !canFinance()){ toast('This one is for the finance members'); return; }
+    const idx = await dsParentIndex(ds);
+    const made = dsRowsToRecords(ds, rows, idx);
+    const missed = made.unmatched || [];
+    const fresh = made.map(r => stampArea(r));
+    if (!fresh.length){
+      toast(missed.length
+        ? 'None of those names are on the ' + ds.parent.table.replace(/_/g,' ')
+          + ' list yet \u2014 add them there first'
+        : 'Nothing could be read from that sheet \u2014 check the column headings');
+      return;
+    }
+    await db.insertMany(ds.table, fresh);
+    closeModal();
+    toast(fresh.length + ' added to ' + ds.label.toLowerCase()
+      + (missed.length ? '. ' + missed.length + ' skipped \u2014 not on the list: '
+          + missed.slice(0,3).join(', ') + (missed.length > 3 ? '\u2026' : '') : ''));
+    render(); return;
+  }
+
   if (IMPORT.target === 'morning_students' || IMPORT.target === 'morning_teachers'){
     const fresh = rows.map((r,i) => {
       const row = Object.assign({}, r, { status:'active' });
@@ -7411,11 +8010,6 @@ async function runImport(){
     feeState.entries = feeState.entries.filter(x => x.sheet !== sheet);
   }
   let n = feeState.entries.filter(e => e.sheet === sheet).length;
-  rows.forEach(r => {
-    if (r.dob) r.dob = dmyDate(r.dob);
-    // Excel drops the leading 0 from mobile numbers: 3001234567 -> 03001234567
-    if (r.contact && /^3\d{9}$/.test(String(r.contact).trim())) r.contact = '0' + String(r.contact).trim();
-  });
   await db.insertMany('fee_entries',
     rows.map(r => Object.assign({ cycle_id:feeState.cycle.id, sheet:sheet, serial_no:++n }, r)));
   closeModal();
@@ -7595,7 +8189,8 @@ function morningActions(){
       + '<button class="btn ghost" onclick="exportMorningTeachers()">Download</button>'
       + '<button class="btn send" onclick="openShare(\'morning_teachers\')">Send</button>'
       + '<button class="btn" onclick="editMorningTeacher()">Add teacher</button>';
-  return '<button class="btn ghost" onclick="exportMorningSalary()">Download</button>'
+  return '<button class="btn ghost" onclick="openImport(\'morning_salaries\')">Import</button>'
+      + '<button class="btn ghost" onclick="exportMorningSalary()">Download</button>'
       + '<button class="btn send" onclick="openShare(\'morning_salary\')">Send</button>';
 }
 
@@ -7994,7 +8589,9 @@ async function pageCases(v){
   rows.forEach(c => { (byDate[c.meeting_date] = byDate[c.meeting_date] || []).push(c); });
 
   let h = head('Tuesday cases — ' + scopeLabel(), 'What was heard, what the board recommended, and what the parent body said back.',
-    '<button class="btn ghost" onclick="exportCases()">Download minutes</button>'
+    '<button class="btn ghost" onclick="openImport(\'cases\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportDataset(\'cases\')">Export</button>'
+    + '<button class="btn ghost" onclick="exportCases()">Download minutes</button>'
     + '<button class="btn" onclick="editCase()">Log a case</button>');
 
   if (!rows.length){
@@ -8111,7 +8708,9 @@ async function saveDocx(children, filename, htmlFallback){
 async function pagePrograms(v){
   const rows = (await sList('programs')).sort((a,b) => (b.start_date||'').localeCompare(a.start_date||''));
   let h = head('Programmes', 'Courses, events and activities — both the ones you plan and the ones handed down by the parent body.',
-    '<button class="btn" onclick="editProgram()">Add programme</button>');
+    '<button class="btn ghost" onclick="openImport(\'programs\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportDataset(\'programs\')">Export</button>'
+    + '<button class="btn" onclick="editProgram()">Add programme</button>');
   h += '<div class="panel"><div class="body flush">';
   if (!rows.length){
     h += '<div class="empty"><p>Nothing here yet.</p><button class="btn" onclick="editProgram()">Add the first programme</button></div>';
@@ -8369,7 +8968,9 @@ async function pagePRF(v){
   const [rows, programs] = await Promise.all([sList('prf_requests'), sList('programs')]);
   rows.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
   let h = head('Permission forms', 'Fill the details once. The board template is generated for you, and the 15-day rule is checked before you send it.',
-    '<button class="btn" onclick="editPRF()">New permission form</button>');
+    '<button class="btn ghost" onclick="openImport(\'prf_requests\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportDataset(\'prf_requests\')">Export</button>'
+    + '<button class="btn" onclick="editPRF()">New permission form</button>');
   h += '<div class="note">Council rule: a permission form must reach the parent body <b>15 days before</b> the programme date. '
      + 'Programmes handed down by the parent body usually do not need one.</div>';
   h += '<div class="panel"><div class="body flush">';
@@ -8622,12 +9223,8 @@ async function buildQuarter(q, y){
     SHEET_KEYS.forEach(k => bySheet[k] = t(k));
     perMonth.push({ month:MONTHS[c.month-1], status:c.status, students:es.length,
       bySheet:bySheet,
-      total:SHEET_KEYS.reduce((sum,k) => sum + (SHEETS[k].noSpend ? 0 : bySheet[k]), 0) });
+      total:SHEET_KEYS.reduce((sum,k) => sum + bySheet[k], 0) });
   }
-  // An area's report shows its own sheets; any sheet carrying money shows regardless.
-  const own = sheetsOf(SCOPE.area);
-  const keys = SHEET_KEYS.filter(k => !SHEETS[k].noSpend
-    && ((own.length ? own.indexOf(k) >= 0 : SHEETS[k].area === 'kharadar') || sheetSum(perMonth, k) > 0));
   const qCases = cases.filter(c => c.meeting_date >= from && c.meeting_date <= to);
   const qProgs = programs.filter(p => {
     if (p.start_date && p.start_date >= from && p.start_date <= to) return true;       // started in the quarter
@@ -8636,7 +9233,7 @@ async function buildQuarter(q, y){
     return false;
   });
   const tally = k => qCases.filter(c => c.decision === k).length;
-  return { q, y, months, perMonth, keys, qCases, qProgs,
+  return { q, y, months, perMonth, qCases, qProgs,
     grand: perMonth.reduce((s,m) => s + m.total, 0),
     beneficiaries: perMonth.reduce((s,m) => s + m.students, 0),
     caseStats:{ total:qCases.length, approved:tally('approved'), pending:tally('pending'),
@@ -8654,7 +9251,10 @@ async function pageReport(v){
     + [1,2,3,4].map(q => '<option value="' + q + '"' + (repState.quarter === q ? ' selected' : '') + '>Quarter ' + q + '</option>').join('')
     + '</select></div><div style="width:96px"><select onchange="repState.year=+this.value;render()">'
     + years.map(y => '<option' + (repState.year === y ? ' selected' : '') + '>' + y + '</option>').join('')
-    + '</select></div><button class="btn send" onclick="openShare(\'report\')">Send</button>'
+    + '</select></div>'
+    + '<button class="btn ghost" onclick="openImport(\'quarterly_reports\')">Import</button>'
+    + '<button class="btn ghost" onclick="exportDataset(\'quarterly_reports\')">Export</button>'
+    + '<button class="btn send" onclick="openShare(\'report\')">Send</button>'
     + '<button class="btn gold" onclick="exportReport()">Download Word</button>');
 
   h += '<div class="stats"><div><div class="k">Disbursed this quarter</div><div class="v">Rs ' + money(d.grand) + '</div></div>'
@@ -8664,15 +9264,15 @@ async function pageReport(v){
 
   h += '<div class="panel"><h2>Financial assistance by month</h2><div class="body flush"><div class="scroll">'
     + '<table class="ledger"><thead><tr><th>Month</th>'
-    + d.keys.map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
+    + SHEET_KEYS.map(k => '<th class="num">' + esc(SHEETS[k].short) + '</th>').join('')
     + '<th class="num">Total</th><th class="num">Students</th><th>Sheet</th></tr></thead><tbody>'
     + (d.perMonth.length ? d.perMonth.map(m => '<tr><td>' + m.month + '</td>'
-        + d.keys.map(k => '<td class="num">' + money(m.bySheet[k]) + '</td>').join('')
+        + SHEET_KEYS.map(k => '<td class="num">' + money(m.bySheet[k]) + '</td>').join('')
         + '<td class="num">' + money(m.total) + '</td><td class="num">' + m.students + '</td>'
         + '<td>' + statusTag(m.status) + '</td></tr>').join('')
-      : '<tr><td colspan="' + (d.keys.length + 4) + '"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
+      : '<tr><td colspan="' + (SHEET_KEYS.length + 4) + '"><div class="empty"><p>No fee sheets exist for this quarter.</p></div></td></tr>')
     + '</tbody><tfoot><tr><td>Quarter total</td>'
-    + d.keys.map(k => '<td class="num">' + money(sheetSum(d.perMonth, k)) + '</td>').join('')
+    + SHEET_KEYS.map(k => '<td class="num">' + money(sheetSum(d.perMonth, k)) + '</td>').join('')
     + '<td class="num">' + money(d.grand) + '</td><td class="num">' + d.beneficiaries + '</td><td></td></tr></tfoot></table>'
     + '</div></div></div>';
 
@@ -8700,10 +9300,10 @@ async function exportReport(){
       para('Quarterly Report · ' + label, { bold:true, center:true, size:24 }),
       new docx.Paragraph({ text:'' }),
       heading('1. Financial assistance'),
-      simpleTable([['Month'].concat(d.keys.map(k => SHEETS[k].short)).concat(['Total','Students'])]
-        .concat(d.perMonth.map(m => [m.month].concat(d.keys.map(k => money(m.bySheet[k])))
+      simpleTable([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+        .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
           .concat([money(m.total), String(m.students)])))
-        .concat([['Total'].concat(d.keys.map(k => money(sheetSum(d.perMonth, k))))
+        .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
           .concat([money(d.grand), String(d.beneficiaries)])])),
       heading('2. Cases heard on Tuesday sittings'),
       simpleTable([['Measure','Count'],
@@ -8732,10 +9332,10 @@ async function exportReport(){
       + rows.slice(1).map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</table>';
     return '<p align="center"><b>Local Education Board — Kharadar</b><br><b>Quarterly Report · ' + esc(label) + '</b></p>'
       + '<h4>1. Financial assistance</h4>'
-      + tbl([['Month'].concat(d.keys.map(k => SHEETS[k].short)).concat(['Total','Students'])]
-          .concat(d.perMonth.map(m => [m.month].concat(d.keys.map(k => money(m.bySheet[k])))
+      + tbl([['Month'].concat(SHEET_KEYS.map(k => SHEETS[k].short)).concat(['Total','Students'])]
+          .concat(d.perMonth.map(m => [m.month].concat(SHEET_KEYS.map(k => money(m.bySheet[k])))
             .concat([money(m.total), String(m.students)])))
-          .concat([['Total'].concat(d.keys.map(k => money(sheetSum(d.perMonth, k))))
+          .concat([['Total'].concat(SHEET_KEYS.map(k => money(sheetSum(d.perMonth, k))))
             .concat([money(d.grand), String(d.beneficiaries)])]))
       + '<h4>2. Cases heard</h4>'
       + tbl([['Measure','Count'],['Cases heard',String(d.caseStats.total)],['Approved',String(d.caseStats.approved)],
@@ -8777,7 +9377,9 @@ async function pageMembers(v){
   const waiting = rows.filter(r => r.role === 'pending');
 
   let h = head('Board members',
-    'Who sits where. A person only ever sees the area they belong to \u2014 that rule is held by the database, not just by this screen.');
+    'Who sits where. A person only ever sees the area they belong to \u2014 that rule is held by the database, not just by this screen.',
+    '<button class="btn ghost" onclick="exportMembers()">Export</button>'
+    + '<button class="btn send" onclick="openShare(\'members\')">Send</button>');
 
   if (waiting.length){
     h += '<div class="panel"><h2>Waiting to be placed<span class="mini">' + waiting.length
